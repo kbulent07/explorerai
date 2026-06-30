@@ -20,6 +20,7 @@ def test_stable_track_id_across_frames():
         out = m.update([_det(100 + dx, 100, 50, 120)], now=float(dx))
         if out:
             ids.append(out[0][0])
+    assert len(ids) >= 3, "track yeterince aktive olmadi"
     assert len(set(ids)) == 1, f"track_id kararsiz: {ids}"
 
 

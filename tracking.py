@@ -244,8 +244,11 @@ class PersonTrackManager(BestShotTrackManager):
         import supervision as sv
         self._sv = sv
         import warnings
+        # TODO: supervision ileride ByteTrack'i yeniden adlandirabilir (pydeprecate
+        #       FutureWarning). Surum yukseltince bu bastirma kaldirilip yeni API'ye
+        #       gecilmeli.
         with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
+            warnings.filterwarnings("ignore", category=FutureWarning)
             self.byte_track = sv.ByteTrack(
                 track_activation_threshold=track_activation_threshold,
                 lost_track_buffer=lost_track_buffer,
