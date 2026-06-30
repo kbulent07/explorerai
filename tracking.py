@@ -165,18 +165,53 @@ class Track:
             self.best_time = now
 
 
-class FaceTrackerManager:
+class BestShotTrackManager:
+    """Best-shot tutma + zaman asimiyla finalize ortak mantigi. Alt siniflar
+    `update()` ile track_id atar; bu taban best-shot kaydi/finalize'i saglar."""
+
+    def __init__(self, track_timeout=2.0):
+        self.track_timeout = track_timeout
+        self.tracks = {}            # track_id -> Track
+        self._next_id = 1
+
+    def record_quality(self, track_id, score, hires_crop, hires_bbox, now):
+        tr = self.tracks.get(track_id)
+        if tr is not None:
+            tr.maybe_update_best(score, hires_crop, hires_bbox, now)
+
+    def collect_finished(self, now):
+        """track_timeout'u asan track'leri dondur ve listeden cikar."""
+        finished = []
+        for tid in list(self.tracks.keys()):
+            tr = self.tracks[tid]
+            if (now - tr.last_seen) > self.track_timeout:
+                del self.tracks[tid]
+                if tr.best_crop is not None and tr.best_score > 0:
+                    finished.append(tr)
+                else:
+                    log.debug("Track %s kayda deger kare olmadan bitti", tid)
+        return finished
+
+    def flush_all(self, now):
+        """Kapanissta tum aktif track'leri finalize et."""
+        finished = []
+        for tr in self.tracks.values():
+            if tr.best_crop is not None and tr.best_score > 0:
+                finished.append(tr)
+        self.tracks.clear()
+        return finished
+
+
+class FaceTrackerManager(BestShotTrackManager):
     """Detect bbox'lari kareler arasi eslestirip track_id atar; best-shot tutar.
 
     track_timeout boyunca guncellenmeyen track'ler "biter" ve finalize edilir.
     """
 
     def __init__(self, iou_threshold=0.3, max_center_dist=120.0, track_timeout=2.0):
+        super().__init__(track_timeout=track_timeout)
         self.iou_threshold = iou_threshold
         self.max_center_dist = max_center_dist
-        self.track_timeout = track_timeout
-        self.tracks = {}            # track_id -> Track
-        self._next_id = 1
 
     def update(self, detect_bboxes, now):
         """Mevcut karedeki detect bbox'larini track'lere esle. Eslesmeyenlere
@@ -226,34 +261,3 @@ class FaceTrackerManager:
                 assignments.append((tid, bbox))
 
         return assignments
-
-    def record_quality(self, track_id, score, hires_crop, hires_bbox, now):
-        tr = self.tracks.get(track_id)
-        if tr is not None:
-            tr.maybe_update_best(score, hires_crop, hires_bbox, now)
-
-    def collect_finished(self, now):
-        """track_timeout'u asan track'leri dondur ve listeden cikar.
-
-        Donus: bitmiss Track listesi (en az bir best_crop'u olanlar finalize
-        edilmek uzere; crop'u olmayanlar sessizce atilir).
-        """
-        finished = []
-        for tid in list(self.tracks.keys()):
-            tr = self.tracks[tid]
-            if (now - tr.last_seen) > self.track_timeout:
-                del self.tracks[tid]
-                if tr.best_crop is not None and tr.best_score > 0:
-                    finished.append(tr)
-                else:
-                    log.debug("Track %s kayda deger kare olmadan bitti", tid)
-        return finished
-
-    def flush_all(self, now):
-        """Kapanissta tum aktif track'leri finalize et."""
-        finished = []
-        for tr in self.tracks.values():
-            if tr.best_crop is not None and tr.best_score > 0:
-                finished.append(tr)
-        self.tracks.clear()
-        return finished
