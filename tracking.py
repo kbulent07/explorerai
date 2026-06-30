@@ -139,6 +139,34 @@ def _center(bbox):
     return (x + w / 2.0, y + h / 2.0)
 
 
+def associate_faces_to_persons(faces, person_tracks):
+    """Her yuzu, merkezini iceren kisi kutusuna esle. Coklu adayda en yuksek
+    IoU'lu kisi (esitlikte en kucuk track_id). Iceren kisisi olmayan yuz duser.
+
+    faces        : [{"bbox": (x,y,w,h), ...}, ...]
+    person_tracks: [(track_id, (x,y,w,h)), ...]
+    donus        : [(track_id, face_dict), ...]
+    """
+    assignments = []
+    for face in faces:
+        fx, fy, fw, fh = face["bbox"]
+        cx, cy = fx + fw / 2.0, fy + fh / 2.0
+        candidates = []
+        for tid, pbox in person_tracks:
+            px, py, pw, ph = pbox
+            if px <= cx <= px + pw and py <= cy <= py + ph:
+                candidates.append((tid, pbox))
+        if not candidates:
+            continue
+        # En yuksek IoU; esitlikte en kucuk track_id (-tid ile max'ta belirleyici)
+        best_tid, _ = max(
+            candidates,
+            key=lambda c: (_iou(face["bbox"], c[1]), -c[0]),
+        )
+        assignments.append((best_tid, face))
+    return assignments
+
+
 class Track:
     """Tek bir gorunum: bir yuzun kameradaki yassam suresi + en iyi karesi."""
 
