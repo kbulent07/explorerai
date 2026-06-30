@@ -18,7 +18,9 @@ import time
 import cv2 as cv
 
 from framing import FaceTracker, FrameTransformer
-from tracking import FaceTrackerManager, compute_quality
+from tracking import (FaceTrackerManager, PersonTrackManager,
+                      associate_faces_to_persons, compute_quality)
+from detection_backend import resolve_detection_config, build_person_detector
 
 log = logging.getLogger("facezoom.worker")
 
@@ -68,10 +70,28 @@ class CameraWorker:
         self.detect_on_hires = bool(config.get("detect_on_hires", False))
         # Algilamayi kucultulmuss karede yap (CPU): 0.5 = yari boyut. 1.0 = kapali.
         self.detect_downscale = float(config.get("detect_downscale", 0.5))
-        self.manager = FaceTrackerManager(
-            iou_threshold=config.get("track_iou_threshold", 0.3),
-            track_timeout=config.get("track_timeout", 2.0),
-        )
+        # Tespit arka ucu: mediapipe (varsayilan) | yolox_person
+        self._det_cfg = resolve_detection_config(config)
+        self._person_detector = build_person_detector(self._det_cfg)
+        # build_person_detector model yoksa None doner -> guvenli mediapipe fallback
+        if self._det_cfg["backend"] == "yolox_person" and self._person_detector is not None:
+            self.backend = "yolox_person"
+            self.manager = PersonTrackManager(
+                track_activation_threshold=self._det_cfg["bytetrack_track_activation_threshold"],
+                lost_track_buffer=self._det_cfg["bytetrack_lost_buffer"],
+                minimum_matching_threshold=self._det_cfg["bytetrack_min_matching_threshold"],
+                frame_rate=max(1, int(config.get("preview_fps", 12))),
+                track_timeout=config.get("track_timeout", 2.0),
+            )
+            log.info("Tespit arka ucu: yolox_person (ByteTrack)")
+        else:
+            if self._det_cfg["backend"] == "yolox_person":
+                log.warning("yolox_person istendi ama dedektor kurulamadi -> mediapipe")
+            self.backend = "mediapipe"
+            self.manager = FaceTrackerManager(
+                iou_threshold=config.get("track_iou_threshold", 0.3),
+                track_timeout=config.get("track_timeout", 2.0),
+            )
         # Merkez-mesafe eslessme esigi SABIT 120px degil; algilama karesinin
         # GENISLIGINE oranli (cozunurluk degisince tutarli kalir). process()
         # icinde dw belli olunca her karede guncellenir.
@@ -107,6 +127,21 @@ class CameraWorker:
         elif (self.transformer.frame_width, self.transformer.frame_height) != (fw, fh):
             self.transformer.update_size(fw, fh)
 
+    def _record_best(self, tid, face, sx, sy, hires_frame, frame_area, now):
+        """Bir yuz icin hires kirpinti + kalite skorunu hesaplayip manager'a yaz."""
+        hbbox = scale_bbox(face["bbox"], sx, sy)
+        crop = crop_with_margin(hires_frame, hbbox, self.crop_margin)
+        if crop is None:
+            return
+        hface = {
+            "bbox": hbbox,
+            "confidence": face["confidence"],
+            "keypoints": {k: (int(v[0] * sx), int(v[1] * sy))
+                          for k, v in face.get("keypoints", {}).items()},
+        }
+        score = compute_quality(hface, crop, frame_area, self.weights)
+        self.manager.record_quality(tid, score, crop, hbbox, now)
+
     def process(self):
         """Bir adim isle, gosterilecek (output_frame) dondur veya None."""
         now = time.time()
@@ -136,8 +171,9 @@ class CameraWorker:
             det_source, det_id, det_resize = detect_frame, detect_id, False
         sx, sy = hw / dw, hh / dh
 
-        # Merkez-mesafe esigini algilama genisligine olcekle (sabit px degil).
-        self.manager.max_center_dist = max(1.0, self._center_dist_factor * dw)
+        # Merkez-mesafe esigi yalniz mediapipe (FaceTrackerManager) yolunda anlamli
+        if self.backend == "mediapipe":
+            self.manager.max_center_dist = max(1.0, self._center_dist_factor * dw)
 
         self._ensure_transformer(hw, hh)
         self._frame_count += 1
@@ -147,34 +183,34 @@ class CameraWorker:
         if run_detect:
             self._last_detect_id = det_id
             det_img = cv.resize(det_source, (dw, dh)) if det_resize else det_source
+
+            # Yuz tespiti her iki arka uçta da gerekli (best-shot + frontallik)
             faces = self.tracker.detect(det_img)
-            # kucuk yuzleri ele (yanliss pozitif)
             faces = [f for f in faces if f["bbox"][3] >= self.min_face_size]
             self._faces = faces
-
-            detect_bboxes = [f["bbox"] for f in faces]
-            assignments = self.manager.update(detect_bboxes, now)
-
-            # her eslessen yuz icin best-shot kalitesini HIRES'ten degerlendir
             frame_area = float(hw * hh)
-            bbox_to_face = {tuple(f["bbox"]): f for f in faces}
-            for tid, dbbox in assignments:
-                face = bbox_to_face.get(tuple(dbbox))
-                if face is None:
-                    continue
-                hbbox = scale_bbox(dbbox, sx, sy)
-                crop = crop_with_margin(hires_frame, hbbox, self.crop_margin)
-                if crop is None:
-                    continue
-                # frontallik/guven icin hires koordinatli bir face kopyasi
-                hface = {
-                    "bbox": hbbox,
-                    "confidence": face["confidence"],
-                    "keypoints": {k: (int(v[0] * sx), int(v[1] * sy))
-                                  for k, v in face.get("keypoints", {}).items()},
-                }
-                score = compute_quality(hface, crop, frame_area, self.weights)
-                self.manager.record_quality(tid, score, crop, hbbox, now)
+
+            if self.backend == "yolox_person":
+                # 1) YOLOX kisi tespiti -> 2) ByteTrack track_id
+                persons = self._person_detector.detect(det_img)
+                person_tracks = self.manager.update(persons, now)
+                # 3) yuzleri iceren kisiye esle -> kisi track_id devralir
+                pairs = associate_faces_to_persons(faces, person_tracks)
+                dropped = len(faces) - len(pairs)
+                if dropped > 0:
+                    log.debug("%d yuz iceren kisi kutusu bulunamadi (dusuruldu)", dropped)
+                for tid, face in pairs:
+                    self._record_best(tid, face, sx, sy, hires_frame, frame_area, now)
+            else:
+                # mediapipe: yuz bbox'lari dogrudan track edilir (mevcut davranis)
+                detect_bboxes = [f["bbox"] for f in faces]
+                assignments = self.manager.update(detect_bboxes, now)
+                bbox_to_face = {tuple(f["bbox"]): f for f in faces}
+                for tid, dbbox in assignments:
+                    face = bbox_to_face.get(tuple(dbbox))
+                    if face is None:
+                        continue
+                    self._record_best(tid, face, sx, sy, hires_frame, frame_area, now)
 
         self._face_present = len(self._faces) > 0
 
