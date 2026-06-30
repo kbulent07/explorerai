@@ -10,9 +10,8 @@
 # -----------------------------------------------------------------------------
 
 import numpy as np
-import pytest
 
-from detection_backend import YoloxPersonDetector, yolox_preproc
+from detection_backend import YoloxPersonDetector
 
 INPUT_SIZE = 416
 N_ANCHORS = sum((INPUT_SIZE // s) ** 2 for s in (8, 16, 32))  # 3549
