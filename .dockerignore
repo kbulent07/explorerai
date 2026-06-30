@@ -1,0 +1,21 @@
+# Build baglamindan haric tutulanlar (imaj kucuk + build hizli kalsin).
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Yerel veri / ciktilar (container kendi volume'lerini kullanir)
+captures/
+facezoom.db
+snapshots/
+
+# Gelistirme / arac dosyalari
+.claude/
+.git/
+.gitignore
+*.md
+
+# Docker'in kendisi
+Dockerfile
+.dockerignore
+docker-compose.yml

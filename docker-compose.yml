@@ -1,0 +1,32 @@
+# FaceZoom - Docker Compose
+# -----------------------------------------------------------------------------
+# RTSP kameralara baglanti (DISARI dogru) bridge agda da calisir; web arayuzu
+# 5000 portundan yayinlanir. Linux'ta isterseniz host agi icin asagidaki
+# network_mode satirini acabilirsiniz (Windows/Mac Docker Desktop'ta sinirli).
+# -----------------------------------------------------------------------------
+
+services:
+  facezoom:
+    build: .
+    image: facezoom:latest
+    container_name: facezoom
+    ports:
+      - "5000:5000"
+    volumes:
+      # Ayarlar + /settings ekranindan eklenen/silinen kameralar kalici olsun.
+      # NOT: container non-root (uid 1000) calisir; Linux'ta /settings'in
+      # config.yaml'a yazabilmesi icin host dosyasi uid 1000'e yazilabilir olmali
+      # (Docker Desktop Windows/Mac'te bu otomatik halledilir).
+      - ./config.yaml:/app/config.yaml
+      # ArcFace modeli (~300MB) her acilista yeniden inmesin diye kalici onbellek.
+      # Yol non-root kullanicinin HOME'una tasindi (Dockerfile: HOME=/home/appuser).
+      - insightface-models:/home/appuser/.insightface
+    restart: unless-stopped
+    # RTSP kamera akislari uzun omurlu thread tutar; bol thread'e izin ver.
+    # (Container'i durdururken nazik kapanma icin)
+    stop_grace_period: 10s
+    # --- Linux'ta host agi (opsiyonel): LAN kameralarina en dogrudan erisim ---
+    # network_mode: host
+
+volumes:
+  insightface-models:

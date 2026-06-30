@@ -1,0 +1,88 @@
+# FaceZoom yapilandirma SABLONU
+# -----------------------------------------------------------------------------
+# Bu dosyayi `config.yaml` olarak kopyalayip kendi degerlerinizi girin:
+#     cp config.example.yaml config.yaml      (Windows: copy config.example.yaml config.yaml)
+#
+# config.yaml GERCEK kamera parolalari + web parolasi icerdiginden .gitignore
+# ile surum kontrolu DISINDA tutulur. Bu sablon yer tutucularla versiyonlanir.
+#
+# Web kullanici/parolasi ortam degiskeniyle de verilebilir (config'i ezer):
+#     FACEZOOM_WEB_USERNAME, FACEZOOM_WEB_PASSWORD
+# Boylece parola hic dosyaya yazilmadan da calistirilabilir.
+# -----------------------------------------------------------------------------
+
+# ---- algilama / takip ----
+face_model: "models/blaze_face_full_range.tflite"  # full_range: uzak/egik yuzler icin
+                                                    # (short_range: models/blaze_face_short_range.tflite)
+detect_on_hires: true        # tepeden/uzak kamera: algilamayi hires akista yap
+detect_downscale: 0.5        # CPU: algilamayi bu oranda kucultulmuss karede yap (1.0=kapali)
+preview_fps: 12              # CPU: web canli onizleme/isleme hizi ust siniri
+detection_confidence: 0.4    # MediaPipe min algilama guveni (dussuk = daha cok yuz)
+min_face_size: 20            # piksel; bundan kucuk yuzleri ele (yanliss pozitif)
+crop_margin: 0.6             # kaydedilen yuz karesinde cevre payi (yuksek=daha genis, az yakin kirpma)
+detect_interval: 2           # kac karede bir algilama yapilsin (performans)
+track_iou_threshold: 0.3     # kareler arasi yuz eslessme esigi (IoU)
+track_center_dist_factor: 0.2  # merkez-mesafe esigi: algilama kare GENISLIGININ orani
+                               # (0.2 -> genisligin %20'si; cozunurluge gore otomatik olcekli)
+track_timeout: 2.0           # bu sure yuz gorulmezse gorunum biter -> en-net kare belle
+recent_best_window_seconds: 60   # kisinin gosterilecek karesi: son bu sure (sn) icindeki EN NET (1 dk)
+# Bellekteki kisi sayisi SABIT DEGIL; yazilim RAM'e gore belirler (bayt butcesi).
+recent_ram_fraction: 0.05        # bostaki RAM'in bu orani kadar bellek butcesi
+recent_ram_min_mb: 64            # alt sinir (MB)
+recent_ram_max_mb: 512           # ust sinir (MB)
+
+# ---- yuz tanima (insightface/ArcFace) - kimlik YALNIZ BELLEKTE, diske yazilmaz ----
+recognition_enabled: true        # ayni kisiyi konum/kamera bagimsiz embedding ile esle
+recognition_model: "buffalo_l"   # insightface model paketi (ilk seferde indirilir)
+recognition_similarity: 0.40     # kosinus benzerlik esigi (yuksek=daha kati ayni-kisi)
+recognition_det_size: 320        # tanima dedektoru giris boyutu (kirpinti kucuk -> hizli)
+recognition_required: true       # insightface yuz dogrulamazsa kayit SAKLANMAZ (yanlis pozitif filtresi)
+recognition_min_det_score: 0.4   # bu skorun altindaki zayif tespitler reddedilir (yuksek=daha kati)
+
+# ---- canli zoom ----
+zoom_enabled: true          # canli goruntuye yuze-odakli dijital pan-zoom; false=tam kare
+zoom_factor: 2.5
+smoothing: 0.15             # FrameTransformer yumuscatma (kucuk = daha yumuscak/yavass)
+hold_seconds: 1.5           # yuz kaybolunca geniss kadraja donmeden once bekleme
+output_size: [1280, 720]    # canli pencere / cikti cozunurlugu
+
+# ---- best-shot skor agirliklari (toplam ~1.0 onerilir) ----
+quality_weights:
+  sharpness: 0.40           # Laplacian netligi (NET yuz)
+  frontality: 0.30          # cepheden/acik yuz (gozler+burun simetrik)
+  size: 0.10                # yuz boyutu
+  exposure: 0.10            # pozlama
+  confidence: 0.10          # algilama guveni
+
+# ---- veritabani / saklama ----
+db_path: "facezoom.db"
+images_dir: "captures"
+retention_days: 30          # KVKK: bu sureden eski kayit + dosya silinsin
+cleanup_interval_hours: 6   # retention temizliginin calissma sikligi
+
+# ---- arayuz / test ----
+webcam_test_index:          # test icin 0 verilirse RTSP yerine webcam kullanilir
+show_windows: true          # canli zoom pencerelerini goster
+debug_overlay: true         # FPS + yuz durumu + kamera adi overlay
+
+# ---- web galeri (webui.py) ----
+web:
+  host: "0.0.0.0"           # yalniz yerel ag; disari acmayin (TLS icin ters-proxy kullanin)
+  port: 5000
+  username: "admin"
+  password: "DEGISTIRIN"    # GUCLU bir parola girin (veya FACEZOOM_WEB_PASSWORD env)
+  auth_enabled: true        # yerel guvenli agda false yapilabilir (auth kapanir)
+  max_streams_per_camera: 8 # kamera basina eszamanli canli izleyici siniri (thread korumasi)
+  threads: 64               # waitress worker thread sayisi
+
+# ---- kameralar ----
+# Hikvision RTSP URL formati:
+#   rtsp://KULLANICI:PAROLA@IP:554/Streaming/Channels/{kanal}{akis}
+#     kanal N main stream -> {N}01 (yuksek coz.) ; sub -> {N}02 (dussuk coz.)
+#   Dogrudan kameraya kanal=1 (101/102); NVR uzerinden kameranin kanal no.su.
+#   Parolada ozel karakter varsa URL-encode et (@ -> %40 , : -> %3A , / -> %2F).
+# Bu listeye web ayarlar ekranindan (/settings) ekleme/silme yapabilirsiniz.
+cameras:
+- name: Giris
+  detect_url: rtsp://admin:PAROLA@10.0.0.11:554/Streaming/Channels/102
+  hires_url: rtsp://admin:PAROLA@10.0.0.11:554/Streaming/Channels/101

@@ -1,0 +1,32 @@
+# FaceZoom - surum kontrolune girmemesi gerekenler
+# -----------------------------------------------------------------------------
+# ONEMLI: config.yaml gercek kamera kimlik bilgileri + web parolasi icerir.
+# Bu yuzden config.yaml versiyonlanmaz; sablon icin config.example.yaml kullanin.
+
+# --- Sirlar / yapilandirma (gercek kimlik bilgileri) ---
+config.yaml
+
+# --- Sanal ortam ---
+venv/
+.venv/
+env/
+
+# --- Python derleme artiklari ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Yerel veri / biyometrik ciktilar (KVKK: depoda tutulmaz) ---
+captures/
+snapshots/
+facezoom.db
+facezoom.db-journal
+facezoom.db-wal
+
+# --- Arac / IDE ---
+.claude/
+.agents/
+.vscode/
+.idea/
+*.log
