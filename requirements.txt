@@ -16,3 +16,5 @@ onnxruntime==1.27.0
 # Production WSGI server + sistem kaynak olcumu (bellek butcesi)
 waitress==3.0.2
 psutil==7.2.2
+# Kisi takibi (ByteTrack) - torch'suz, numpy/scipy tabanli
+supervision==0.29.1

@@ -230,6 +230,63 @@ class BestShotTrackManager:
         return finished
 
 
+class PersonTrackManager(BestShotTrackManager):
+    """supervision ByteTrack sarmalayici. Kisi tespitlerinden kararli track_id
+    uretir; best-shot/finalize taban siniftan gelir.
+
+    update() FaceTrackerManager'dan FARKLI olarak guven (confidence) iceren
+    tespit sozlukleri alir (ByteTrack yuksek/dussuk skor eslesmesi icin gerekir).
+    """
+
+    def __init__(self, track_activation_threshold=0.25, lost_track_buffer=30,
+                 minimum_matching_threshold=0.8, frame_rate=12, track_timeout=2.0):
+        super().__init__(track_timeout=track_timeout)
+        import supervision as sv
+        self._sv = sv
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.byte_track = sv.ByteTrack(
+                track_activation_threshold=track_activation_threshold,
+                lost_track_buffer=lost_track_buffer,
+                minimum_matching_threshold=minimum_matching_threshold,
+                frame_rate=frame_rate,
+            )
+
+    def update(self, detections, now):
+        """detections: [{"bbox":(x,y,w,h), "confidence":float}, ...].
+        Donus: [(track_id, (x,y,w,h)), ...] (bu karede track_id alanlar)."""
+        sv = self._sv
+        if not detections:
+            sv_det = sv.Detections.empty()
+        else:
+            xyxy = np.array(
+                [[x, y, x + w, y + h] for (x, y, w, h) in (d["bbox"] for d in detections)],
+                dtype=float,
+            )
+            conf = np.array([float(d["confidence"]) for d in detections], dtype=float)
+            sv_det = sv.Detections(
+                xyxy=xyxy,
+                confidence=conf,
+                class_id=np.zeros(len(detections), dtype=int),
+            )
+        tracked = self.byte_track.update_with_detections(sv_det)
+
+        assignments = []
+        for i in range(len(tracked)):
+            tid = int(tracked.tracker_id[i])
+            x1, y1, x2, y2 = tracked.xyxy[i]
+            bbox = (int(x1), int(y1), int(x2 - x1), int(y2 - y1))
+            tr = self.tracks.get(tid)
+            if tr is None:
+                self.tracks[tid] = Track(tid, bbox, now)
+            else:
+                tr.bbox = bbox
+                tr.last_seen = now
+            assignments.append((tid, bbox))
+        return assignments
+
+
 class FaceTrackerManager(BestShotTrackManager):
     """Detect bbox'lari kareler arasi eslestirip track_id atar; best-shot tutar.
 
