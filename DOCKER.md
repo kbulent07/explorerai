@@ -60,3 +60,10 @@ docker compose up -d --build
 - İmaj insightface derlemesi nedeniyle büyüktür; ilk build internet erişimi ister.
 - CPU yükü yüksekse `config.yaml`'daki `preview_fps`, `detect_interval`,
   `detect_downscale`, `recognition_det_size` ayarlarını düşürün.
+
+## YOLOX modeli (yolox_person arka ucu için)
+
+`detector_backend: yolox_person` kullanacaksanız `models/yolox_nano.onnx` dosyasını
+imaja dahil edin veya bir volume ile bağlayın. `models/` klasörü `.dockerignore`'da
+hariç tutulmuşsa, modeli runtime'da volume olarak mount edin:
+`-v $(pwd)/models:/app/models`. CPU imajında `onnxruntime` (CPU) yeterlidir.

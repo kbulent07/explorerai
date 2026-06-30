@@ -120,6 +120,23 @@ Yüzler sub-stream'de (640×360) çok küçük kaldığında algılama zayıflar
 - En iyi yüz fotoğrafları **göz hizası** kameralardan (örn. giriş kapısı) gelir;
   tavandan tepeden bakan kameralar izleme için iyidir ama yüz açısı düşüktür.
 
+### (Opsiyonel) YOLOX kişi tespiti + ByteTrack
+
+`detector_backend: yolox_person` ile çalışmak için bir YOLOX ONNX modeli gerekir
+(varsayılan yol: `models/yolox_nano.onnx`). Edinme yolları:
+
+1. **Hazır ONNX:** YOLOX GitHub sürümler (releases) sayfasındaki ONNXRuntime demo
+   varlıklarından `yolox_nano.onnx` indirin.
+2. **Kendiniz export:** YOLOX deposunu klonlayıp (torch gerekir, tek seferlik, çevrimdışı):
+   `python tools/export_onnx.py --output-name yolox_nano.onnx -n yolox-nano -c yolox_nano.pth`
+
+İndirilen dosyayı `models/yolox_nano.onnx` olarak yerleştirin. Model dosyası git'e
+**konmaz** (büyük binary). Daha hızlı/az isabetli alternatif: `yolox_tiny.onnx`
+(config'te `yolox_model` + `yolox_input_size` güncelleyin).
+
+GPU (NVIDIA, isteğe bağlı): `pip install onnxruntime-gpu` + CUDA/cuDNN kurun ve
+config'te `yolox_providers: ["CUDAExecutionProvider","CPUExecutionProvider"]` yapın.
+
 ## Hikvision RTSP URL formatı
 
 ```
