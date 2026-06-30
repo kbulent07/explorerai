@@ -208,7 +208,11 @@ class BestShotTrackManager:
             tr.maybe_update_best(score, hires_crop, hires_bbox, now)
 
     def collect_finished(self, now):
-        """track_timeout'u asan track'leri dondur ve listeden cikar."""
+        """track_timeout'u asan track'leri dondur ve listeden cikar.
+
+        Donus: bitmiss Track listesi (en az bir best_crop'u olanlar finalize
+        edilmek uzere; crop'u olmayanlar sessizce atilir).
+        """
         finished = []
         for tid in list(self.tracks.keys()):
             tr = self.tracks[tid]

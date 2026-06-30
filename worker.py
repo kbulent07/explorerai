@@ -80,7 +80,7 @@ class CameraWorker:
                 track_activation_threshold=self._det_cfg["bytetrack_track_activation_threshold"],
                 lost_track_buffer=self._det_cfg["bytetrack_lost_buffer"],
                 minimum_matching_threshold=self._det_cfg["bytetrack_min_matching_threshold"],
-                frame_rate=max(1, int(config.get("preview_fps", 12))),
+                frame_rate=max(1, int(config.get("preview_fps", 12) / max(1, int(config.get("detect_interval", 2))))),
                 track_timeout=config.get("track_timeout", 2.0),
             )
             log.info("Tespit arka ucu: yolox_person (ByteTrack)")
@@ -184,7 +184,7 @@ class CameraWorker:
             self._last_detect_id = det_id
             det_img = cv.resize(det_source, (dw, dh)) if det_resize else det_source
 
-            # Yuz tespiti her iki arka uçta da gerekli (best-shot + frontallik)
+            # Yuz tespiti her iki arka ucta da gerekli (best-shot + frontallik)
             faces = self.tracker.detect(det_img)
             faces = [f for f in faces if f["bbox"][3] >= self.min_face_size]
             self._faces = faces
