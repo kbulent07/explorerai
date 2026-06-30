@@ -170,8 +170,9 @@ class YoloxPersonDetector(PersonDetector):
         active = sess.get_providers()
         if "CUDAExecutionProvider" in self.providers and "CUDAExecutionProvider" not in active:
             log.warning("CUDA provider istendi ama aktif degil; CPU kullaniliyor (%s)", active)
+        input_name = sess.get_inputs()[0].name
         self._session = sess
-        self._input_name = sess.get_inputs()[0].name
+        self._input_name = input_name
         return sess
 
     def detect(self, frame_bgr):

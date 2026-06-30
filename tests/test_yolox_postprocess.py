@@ -1,6 +1,5 @@
 # YOLOX saf yardimcilarinin testleri. onnxruntime/model GEREKMEZ.
 import numpy as np
-import pytest
 
 from detection_backend import yolox_preproc, yolox_decode, nms, yolox_postprocess
 

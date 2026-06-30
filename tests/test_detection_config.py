@@ -1,6 +1,4 @@
 # resolve_detection_config + build_person_detector (model yok) testleri.
-import pytest
-
 from detection_backend import resolve_detection_config, build_person_detector
 
 
