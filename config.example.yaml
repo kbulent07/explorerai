@@ -31,6 +31,18 @@ recent_ram_fraction: 0.05        # bostaki RAM'in bu orani kadar bellek butcesi
 recent_ram_min_mb: 64            # alt sinir (MB)
 recent_ram_max_mb: 512           # ust sinir (MB)
 
+# ---- tespit arka ucu (YOLOX kisi tespiti + ByteTrack) ----
+detector_backend: mediapipe        # varsayilan (geri uyumlu) | yolox_person
+yolox_model: "models/yolox_nano.onnx"   # bkz. README: model edinme
+yolox_input_size: 416              # nano/tiny varsayilani
+yolox_confidence: 0.35             # kisi skoru esigi
+yolox_nms: 0.45                    # NMS IoU esigi
+yolox_providers: ["CPUExecutionProvider"]   # GPU: ["CUDAExecutionProvider","CPUExecutionProvider"]
+person_min_size: 40                # px (detect uzayi); kucuk kisileri ele
+bytetrack_track_activation_threshold: 0.25
+bytetrack_lost_buffer: 30          # kac kare kayip track tutulsun
+bytetrack_min_matching_threshold: 0.8
+
 # ---- yuz tanima (insightface/ArcFace) - kimlik YALNIZ BELLEKTE, diske yazilmaz ----
 recognition_enabled: true        # ayni kisiyi konum/kamera bagimsiz embedding ile esle
 recognition_model: "buffalo_l"   # insightface model paketi (ilk seferde indirilir)

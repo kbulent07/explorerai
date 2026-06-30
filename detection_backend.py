@@ -8,6 +8,7 @@
 # -----------------------------------------------------------------------------
 
 import logging
+import os
 
 import cv2 as cv
 import numpy as np
@@ -91,3 +92,121 @@ def yolox_postprocess(decoded, ratio, conf_thr, nms_thr, class_id=0):
         x1, y1, x2, y2 = xyxy[i]
         out.append((int(x1), int(y1), int(x2 - x1), int(y2 - y1), float(scores[i])))
     return out
+
+
+# -------- Config ve YOLOX dedektor --------
+
+_VALID_BACKENDS = ("mediapipe", "yolox_person")
+
+
+def _as_float(v, default):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_int(v, default):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def resolve_detection_config(config):
+    """config.yaml dict'inden tespit ayarlarini guvenle cozer (varsayilan + dogrulama)."""
+    backend = str(config.get("detector_backend", "mediapipe")).strip().lower()
+    if backend not in _VALID_BACKENDS:
+        log.warning("Gecersiz detector_backend '%s' -> mediapipe", backend)
+        backend = "mediapipe"
+    providers = config.get("yolox_providers") or ["CPUExecutionProvider"]
+    if not isinstance(providers, (list, tuple)) or not all(isinstance(p, str) for p in providers):
+        log.warning("Gecersiz yolox_providers -> ['CPUExecutionProvider']")
+        providers = ["CPUExecutionProvider"]
+    return {
+        "backend": backend,
+        "yolox_model": str(config.get("yolox_model", "models/yolox_nano.onnx")),
+        "yolox_input_size": _as_int(config.get("yolox_input_size", 416), 416),
+        "yolox_confidence": _as_float(config.get("yolox_confidence", 0.35), 0.35),
+        "yolox_nms": _as_float(config.get("yolox_nms", 0.45), 0.45),
+        "yolox_providers": list(providers),
+        "person_min_size": _as_int(config.get("person_min_size", 40), 40),
+        "bytetrack_track_activation_threshold":
+            _as_float(config.get("bytetrack_track_activation_threshold", 0.25), 0.25),
+        "bytetrack_lost_buffer": _as_int(config.get("bytetrack_lost_buffer", 30), 30),
+        "bytetrack_min_matching_threshold":
+            _as_float(config.get("bytetrack_min_matching_threshold", 0.8), 0.8),
+    }
+
+
+class PersonDetector:
+    """Kisi tespiti arka ucu arayuzu."""
+    def detect(self, frame_bgr):
+        raise NotImplementedError
+
+
+class YoloxPersonDetector(PersonDetector):
+    """YOLOX ONNX kisi (COCO class 0) tespiti. onnxruntime tembel yuklenir."""
+
+    PERSON_CLASS = 0
+
+    def __init__(self, model_path, input_size=416, confidence=0.35, nms_thr=0.45,
+                 providers=None, person_min_size=40):
+        self.model_path = model_path
+        self.input_size = int(input_size)
+        self.confidence = float(confidence)
+        self.nms_thr = float(nms_thr)
+        self.providers = providers or ["CPUExecutionProvider"]
+        self.person_min_size = int(person_min_size)
+        self._session = None
+        self._input_name = None
+
+    def _ensure(self):
+        if self._session is not None:
+            return self._session
+        import onnxruntime as ort
+        log.info("YOLOX yukleniyor: %s (providers=%s)", self.model_path, self.providers)
+        sess = ort.InferenceSession(self.model_path, providers=self.providers)
+        active = sess.get_providers()
+        if "CUDAExecutionProvider" in self.providers and "CUDAExecutionProvider" not in active:
+            log.warning("CUDA provider istendi ama aktif degil; CPU kullaniliyor (%s)", active)
+        self._session = sess
+        self._input_name = sess.get_inputs()[0].name
+        return sess
+
+    def detect(self, frame_bgr):
+        sess = self._ensure()
+        chw, ratio = yolox_preproc(frame_bgr, self.input_size)
+        out = sess.run(None, {self._input_name: chw[None, :, :, :]})[0]
+        decoded = yolox_decode(out[0], self.input_size)
+        dets = yolox_postprocess(decoded, ratio, self.confidence, self.nms_thr,
+                                 class_id=self.PERSON_CLASS)
+        result = []
+        for x, y, w, h, score in dets:
+            if min(w, h) < self.person_min_size:
+                continue
+            result.append({"bbox": (x, y, w, h), "confidence": score})
+        return result
+
+
+def build_person_detector(resolved):
+    """Cozulmus config'ten dedektor kur. Model yok/yuklenemiyorsa None dondur
+    (worker mediapipe'e duser). ASLA istisna firlatmaz."""
+    if resolved.get("backend") != "yolox_person":
+        return None
+    model = resolved.get("yolox_model")
+    if not model or not os.path.exists(model):
+        log.error("YOLOX modeli bulunamadi: %s -> mediapipe arka ucuna dusuluyor", model)
+        return None
+    try:
+        return YoloxPersonDetector(
+            model_path=model,
+            input_size=resolved["yolox_input_size"],
+            confidence=resolved["yolox_confidence"],
+            nms_thr=resolved["yolox_nms"],
+            providers=resolved["yolox_providers"],
+            person_min_size=resolved["person_min_size"],
+        )
+    except Exception:
+        log.exception("YOLOX dedektor kurulamadi -> mediapipe arka ucuna dusuluyor")
+        return None
