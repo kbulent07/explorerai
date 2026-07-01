@@ -1379,6 +1379,14 @@ SAYIM_PAGE = """
               background: #0c0d10; flex: 0 0 auto; }
     .it .nm { font-size: 14px; font-weight: 600; color: #e8e8e8; }
     .it .meta { font-size: 12px; color: #9aa0aa; }
+    .it img { cursor: zoom-in; }
+    /* son 5 kisi buyuk resim, digerleri kucuk */
+    .it.big img { width: 120px; height: 120px; }
+    .it.big .nm { font-size: 16px; }
+    /* cift tikla -> buyutme (lightbox) */
+    #lb { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
+          align-items: center; justify-content: center; z-index: 50; cursor: zoom-out; }
+    #lb img { max-width: 92vw; max-height: 92vh; border-radius: 8px; box-shadow: 0 0 40px #000; }
     .off { color: #e79bb0; padding: 12px 0; }
     .empty { color: #7d838d; font-size: 13px; padding: 10px 4px; }
   </style>
@@ -1405,13 +1413,20 @@ SAYIM_PAGE = """
       <div class="col"><h2>&#128682; Son cikanlar</h2><div class="lst" id="lst-cik"></div></div>
     </div>
   </div>
+  <div id="lb" onclick="this.style.display='none'"><img id="lbimg" alt=""></div>
   <script>
     function fmt(ts){ return ts ? new Date(ts*1000).toLocaleTimeString('tr-TR') : ''; }
+    function openLb(id){
+      var m=document.getElementById('lb'); document.getElementById('lbimg').src='/counts/'+id+'.jpg';
+      m.style.display='flex';
+    }
     function rows(list){
       if(!list || !list.length) return '<div class="empty">Henuz kayit yok.</div>';
-      return list.map(function(it){
+      return list.map(function(it, i){
         var nm = it.name || '-';
-        return '<div class="it"><img src="/counts/'+it.id+'.jpg" onerror="this.style.visibility=\\'hidden\\'">'
+        var big = i < 5 ? ' big' : '';   // son 5 kisi buyuk, digerleri kucuk
+        return '<div class="it'+big+'"><img src="/counts/'+it.id+'.jpg" ondblclick="openLb('+it.id+')"'
+          + ' title="Cift tikla = buyut" onerror="this.style.visibility=\\'hidden\\'">'
           + '<div><div class="nm">'+nm+'</div>'
           + '<div class="meta">'+(it.camera||'')+' &middot; '+fmt(it.ts)+'</div></div></div>';
       }).join('');
