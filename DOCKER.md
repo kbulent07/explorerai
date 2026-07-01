@@ -61,6 +61,45 @@ docker compose up -d --build
 - CPU yükü yüksekse `config.yaml`'daki `preview_fps`, `detect_interval`,
   `detect_downscale`, `recognition_det_size` ayarlarını düşürün.
 
+## GPU (NVIDIA/CUDA) ile çalıştırma
+
+GPU'lu bir makinede kurulum CPU'dan **farklıdır**: farklı imaj (`Dockerfile.gpu`,
+`onnxruntime-gpu` + CUDA tabanı) ve GPU'yu container'a açan bir compose override
+kullanılır. YOLOX (kişi tespiti) ve insightface (yüz tanıma) CUDA'da koşar.
+
+**Gereksinim (host):** NVIDIA GPU + güncel sürücü (`nvidia-smi` çalışmalı) +
+Docker Desktop (WSL2 backend GPU'yu otomatik destekler). GPU'lu Linux host'ta
+ayrıca **NVIDIA Container Toolkit** gerekir.
+
+**Windows — tek tıkla (önerilen):** `setup_gpu_windows.bat`'a çift tıklayın.
+Script GPU'yu doğrular, GPU imajını derler ve `config.yaml`'i **yüksek doğruluk**
+için ayarlar:
+
+- `compute_device: gpu` — CUDA sağlayıcısı (YOLOX + insightface)
+- `cpu_profile: high` — algılama tam çözünürlükte + her karede (küçük/uzak yüzler)
+- `recognition_det_size: 640` — yüz tanıma dedektörü en yüksek doğruluk
+
+**Elle (herhangi bir platform):**
+
+```bash
+# config.yaml'da compute_device: gpu olduğundan emin olun, sonra:
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+
+# Durdur / loglar
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml down
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml logs -f
+```
+
+> **Doğruluk ayarı (GPU olmadan da):** `cpu_profile: high`, `recognition_det_size`
+> ve **yüz tanıma modeli** (`recognition_model`) ayarlarını **Kamera Ayarları**
+> ekranından da değiştirebilirsiniz. `high` profili CPU'da **ağırdır**; GPU'da
+> önerilir. GPU yoksa GPU imajı gereksiz büyüktür, `setup.bat` (CPU) kullanın.
+>
+> **Yüz tanıma modeli:** `buffalo_l` (standart, ResNet50) varsayılandır.
+> `antelopev2` (ResNet100, glint360k) daha **doğru** eşler; GPU'da önerilir, ilk
+> seferde ~1 GB iner. Model değişince RAM'deki kimlikler sıfırlanır (eski/yeni
+> embedding uzayları kıyaslanamaz). GPU kurulum scripti bunu sorup ayarlar.
+
 ## YOLOX modeli (yolox_person arka ucu için)
 
 `detector_backend: yolox_person` kullanacaksanız `models/yolox_nano.onnx` dosyasını

@@ -277,11 +277,30 @@ SETTINGS_PAGE = """
       <select name="profile">
         <option value="normal" {{ 'selected' if cpu_profile == 'normal' else '' }}>Normal (varsayilan)</option>
         <option value="low" {{ 'selected' if cpu_profile == 'low' else '' }}>Dussuk CPU</option>
+        <option value="high" {{ 'selected' if cpu_profile == 'high' else '' }}>Yuksek dogruluk (GPU onerilir)</option>
       </select>
       <button type="submit">Uygula</button>
-      <span class="hint" style="margin:0;">Dussuk CPU: algilama sub-akista, dussuk fps/cozunurluk,
-        zoom kapali. Secince CANLI uygulanir (kameralar kisa sure yeniden baslar).</span>
+      <span class="hint" style="margin:0;">Dussuk CPU: algilama sub-akista, dussuk fps/cozunurluk, zoom kapali.
+        Yuksek dogruluk: algilama tam cozunurlukte + her karede (kucuk/uzak yuzler yakalanir) &mdash;
+        <b>GPU'da onerilir</b>, CPU'da agirdir. Secince CANLI uygulanir (kameralar kisa sure yeniden baslar).</span>
     </form>
+
+    <h2>Yuz Tanima Modeli</h2>
+    {% if recog_on %}
+    <form class="add" method="post" action="{{ url_for('set_recognition_model') }}"
+          style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <select name="model">
+        <option value="buffalo_l" {{ 'selected' if recog_model == 'buffalo_l' else '' }}>buffalo_l (standart, ResNet50)</option>
+        <option value="antelopev2" {{ 'selected' if recog_model == 'antelopev2' else '' }}>antelopev2 (yuksek dogruluk, ResNet100 &mdash; GPU onerilir)</option>
+      </select>
+      <button type="submit">Uygula</button>
+      <span class="hint" style="margin:0;">antelopev2 daha dogru esler ama daha agirdir ve ilk seferde
+        ~1 GB iner (internet gerekir). GPU'da onerilir. Secince CANLI uygulanir (model degisince
+        RAM'deki kimlikler sifirlanir).</span>
+    </form>
+    {% else %}
+    <p class="hint">Yuz tanima kapali (recognition_enabled: false).</p>
+    {% endif %}
 
     <h2>Yuz Tanima Cozunurlugu</h2>
     {% if recog_on %}
@@ -423,6 +442,7 @@ def settings(message=None, ok=False):
         cpu_profile=perf.resolve_profile(CONFIG),
         detector_backend=str(CONFIG.get("detector_backend", "mediapipe")).lower(),
         recog_on=(RECOG_PIPE is not None),
+        recog_model=str(CONFIG.get("recognition_model", "buffalo_l")).strip(),
         det_size=int(CONFIG.get("recognition_det_size", 320)),
         det_size_options=_DETSIZE_OPTIONS,
         message=message, ok=ok,
@@ -431,6 +451,10 @@ def settings(message=None, ok=False):
 
 # Yuz tanima dedektoru giris cozunurlugu secenekleri (kucuk=hizli, buyuk=dogru)
 _DETSIZE_OPTIONS = [160, 224, 320, 480, 640]
+
+# Yuz tanima modeli secenekleri (buffalo_l=standart/R50; antelopev2=yuksek dogruluk/R100).
+# Ikisi de 512-boyutlu embedding uretir (kosinus esleestirme ile uyumlu).
+_RECOG_MODELS = ("buffalo_l", "antelopev2")
 
 
 @app.route("/detector-backend", methods=["POST"])
@@ -476,6 +500,33 @@ def set_recognition_detsize():
         )
         log.info("recognition_det_size -> %d (taniyici yeniden kuruldu)", val)
     return settings(message=f"Tanima cozunurlugu: {val}px — uygulandi.", ok=True)
+
+
+@app.route("/recognition-model", methods=["POST"])
+@require_auth
+def set_recognition_model():
+    """Yuz tanima modelini degistir (buffalo_l|antelopev2) ve CANLI uygula.
+    Model degisince embedding uzayi degisir -> RAM'deki kimlikler sifirlanir
+    (eski/yeni vektorler kiyaslanamaz). Yeni model ilk embed'de yuklenir
+    (antelopev2 ilk seferde ~1 GB iner)."""
+    global CONFIG
+    m = (request.form.get("model") or "buffalo_l").strip()
+    if m not in _RECOG_MODELS:
+        m = "buffalo_l"
+    config_store.set_values({"recognition_model": m})
+    CONFIG["recognition_model"] = m
+    if RECOG_PIPE is not None:
+        RECOG_PIPE.recognizer = FaceRecognizer(
+            model_name=m,
+            det_size=int(CONFIG.get("recognition_det_size", 320)),
+            min_det_score=CONFIG.get("recognition_min_det_score", 0.5),
+            providers=perf.onnx_providers(CONFIG),
+        )
+        # Eski embedding'ler yeni model uzayinda gecersiz -> kimlikleri sifirla
+        removed = RECENT.clear()
+        log.info("recognition_model -> %s (taniyici yeniden kuruldu, %d kimlik sifirlandi)",
+                 m, removed)
+    return settings(message=f"Yuz tanima modeli: {m} — uygulandi (kimlikler sifirlandi).", ok=True)
 
 
 @app.route("/cpu-profile", methods=["POST"])

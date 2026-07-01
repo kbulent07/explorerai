@@ -76,6 +76,22 @@ class TestEvictionAndDrop(unittest.TestCase):
         self.assertEqual(s.get_jpeg(eid), JPEG)
         self.assertIsNone(s.get_jpeg(99999))
 
+    def test_clear_resets_all(self):
+        # Model degisince cagrilir: tum kimlikler + bayt sayaci sifirlanir,
+        # sonrasinda yeni kayit temiz butceyle eklenebilir.
+        s = RecentFaceStore(sim_threshold=0.4)
+        s.add("A", (0, 0, 10, 10), JPEG, 0.5, ts=1.0, embedding=_unit([1, 0, 0]))
+        s.add("B", (0, 0, 10, 10), JPEG, 0.5, ts=2.0, embedding=_unit([0, 1, 0]))
+        removed = s.clear()
+        self.assertEqual(removed, 2)
+        self.assertEqual(s.stats()["count"], 0)
+        self.assertEqual(s.stats()["bytes"], 0)
+        self.assertEqual(s.list_recent(), [])
+        # sifirlama sonrasi yeni kayit calisir
+        eid, new = s.add("C", (0, 0, 10, 10), JPEG, 0.5, ts=3.0)
+        self.assertTrue(new)
+        self.assertEqual(s.stats()["count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

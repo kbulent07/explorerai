@@ -134,6 +134,17 @@ class RecentFaceStore:
             self._bytes -= e.get("bytes", 0)
             del self._entries[e["id"]]
 
+    def clear(self):
+        """TUM kimlikleri sil (bellek sifirla). Yuz tanima MODELI degisince
+        cagrilir: farkli model farkli embedding uzayi uretir; eski vektorler
+        yenileriyle KIYASLANAMAZ, karistirilirsa esleestirme bozulur. Silinen
+        kayit sayisini dondurur."""
+        with self._lock:
+            n = len(self._entries)
+            self._entries.clear()
+            self._bytes = 0
+            return n
+
     def drop_camera(self, camera):
         """Bir kameraya ait TUM kayitlari sil (kamera config'ten silinince).
 

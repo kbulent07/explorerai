@@ -17,10 +17,16 @@ compute_device: cpu          # cpu | gpu  -> YOLOX + insightface icin onnxruntim
                              # gerekir -> Dockerfile.gpu + docker-compose.gpu.yml (bkz. DOCKER.md).
 
 # ---- islemci profili ----
-cpu_profile: normal          # normal | low  (low: dussuk-CPU ayarlarini topluca ezer)
-                             # Ayarlar ekranindan da secilebilir; low secilince asagidaki
-                             # detect_on_hires/preview_fps/detect_interval/output_size/
-                             # recognition_det_size/zoom_enabled degerleri gecersiz kalir.
+cpu_profile: normal          # normal | low | high
+                             #   low : dussuk-CPU ayarlarini topluca ezer (algilama sub-akista,
+                             #         dussuk fps/cozunurluk, zoom kapali)
+                             #   high: yuksek-DOGRULUK ayarlarini topluca ezer (algilama tam
+                             #         cozunurlukte + her karede -> kucuk/uzak yuzler yakalanir).
+                             #         AGIRDIR; compute_device: gpu ile kullanin. Yuz tanima
+                             #         dogrulugu icin ayrica recognition_det_size: 640 secin.
+                             # Ayarlar ekranindan da secilebilir; low/high secilince
+                             # detect_on_hires/detect_downscale/preview_fps/detect_interval/
+                             # output_size/zoom_enabled degerleri gecersiz kalir.
 
 # ---- algilama / takip ----
 face_model: "models/blaze_face_full_range.tflite"  # full_range: uzak/egik yuzler icin
@@ -65,7 +71,10 @@ counting_swap: false               # giris/cikis yonu ters cikarsa true
 
 # ---- yuz tanima (insightface/ArcFace) - kimlik YALNIZ BELLEKTE, diske yazilmaz ----
 recognition_enabled: true        # ayni kisiyi konum/kamera bagimsiz embedding ile esle
-recognition_model: "buffalo_l"   # insightface model paketi (ilk seferde indirilir)
+recognition_model: "buffalo_l"   # buffalo_l (standart, ResNet50) | antelopev2 (yuksek
+                                 # dogruluk, ResNet100 - GPU onerilir; ilk seferde ~1 GB iner).
+                                 # Ikisi de 512-d embedding uretir. Ayarlar ekranindan da secilir;
+                                 # model degisince RAM'deki kimlikler sifirlanir.
 recognition_similarity: 0.40     # kosinus benzerlik esigi (yuksek=daha kati ayni-kisi)
 recognition_det_size: 320        # tanima dedektoru giris boyutu (kirpinti kucuk -> hizli)
 recognition_required: true       # insightface yuz dogrulamazsa kayit SAKLANMAZ (yanlis pozitif filtresi)

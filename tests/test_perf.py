@@ -14,6 +14,29 @@ def test_low_profil_ezer():
     assert out["output_size"] == perf.LOW_CPU["output_size"]
 
 
+def test_high_profil_dogruluk_ayarlarini_ezer():
+    # 'high': algilama tam cozunurlukte + her karede (GPU/dogruluk)
+    cfg = {"cpu_profile": "high", "detect_downscale": 0.35, "detect_interval": 4,
+           "preview_fps": 6, "detect_on_hires": False, "zoom_enabled": False}
+    out = perf.apply_cpu_profile(cfg)
+    assert out["detect_downscale"] == 1.0
+    assert out["detect_interval"] == 1
+    assert out["preview_fps"] == perf.HIGH_ACCURACY["preview_fps"]
+    assert out["detect_on_hires"] is True
+    assert out["zoom_enabled"] is True
+
+
+def test_high_recognition_det_size_dokunmaz():
+    # recognition_det_size PROFILE DAHIL DEGIL -> arayuz secimi korunur
+    cfg = {"cpu_profile": "high", "recognition_det_size": 320}
+    assert perf.apply_cpu_profile(cfg)["recognition_det_size"] == 320
+
+
+def test_high_gecerli_profil():
+    assert "high" in perf.VALID_PROFILES
+    assert perf.resolve_profile({"cpu_profile": "high"}) == "high"
+
+
 def test_normal_profil_dokunmaz():
     cfg = {"cpu_profile": "normal", "preview_fps": 30, "zoom_enabled": True}
     out = perf.apply_cpu_profile(cfg)
