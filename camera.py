@@ -63,8 +63,15 @@ class StreamReader:
     def stop(self):
         self._stop.set()
         if self._thread is not None:
-            self._thread.join(timeout=3.0)
-        if self._cap is not None:
+            # stimeout=5 sn: donmuss akista read() 5 sn'ye kadar bloke olabilir.
+            # join'i bunun USTUNDE bekle ki okuyucu thread normalde kendi cap'ini
+            # birakip bitsin (asagidaki release ancak thread OLMEDIYSE calisir).
+            self._thread.join(timeout=6.0)
+        # cv2.VideoCapture THREAD-SAFE DEGIL: cap'i yalniz okuyucu thread artik
+        # cap.read() icinde OLMADIGINDA (thread bitti) birak. Aksi halde stop()
+        # ile _run() ayni cap'i eszamanli kullanip cokerdi. _run zaten cikarken
+        # kendi cap'ini birakir; bu yalniz thread hic baslamadi/takildi yedegi.
+        if (self._thread is None or not self._thread.is_alive()) and self._cap is not None:
             self._cap.release()
 
     # ---- okuma --------------------------------------------------------------
