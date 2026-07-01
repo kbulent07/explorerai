@@ -52,6 +52,17 @@ if (-not (Test-Path "docker-compose.gpu.yml")) {
   Read-Host "Cikmak icin Enter"; exit 1
 }
 
+# --- 0) Guncel kodu cek (git repo ise) ---
+# config.yaml / .env .gitignore'da oldugundan pull bunlari EZMEZ.
+Info "Guncel kod kontrol ediliyor (git pull)..."
+if ((Get-Command git -ErrorAction SilentlyContinue) -and (Test-Path ".git")) {
+  git pull --ff-only
+  if ($LASTEXITCODE -eq 0) { Ok "Kod guncel." }
+  else { Warn "git pull yapilamadi (yerel degisiklik/catisma veya internet yok). Mevcut kodla devam." }
+} else {
+  Info "Git deposu degil (veya git yok) -> kod guncellemesi atlandi; mevcut dosyalar kullanilir."
+}
+
 # --- 1) NVIDIA GPU / surucu var mi? ---
 Info "NVIDIA GPU kontrol ediliyor (nvidia-smi)..."
 $hasGpu = $false
