@@ -1402,7 +1402,8 @@ SAYIM_PAGE = """
     /* cift tikla -> buyutme (lightbox) */
     #lb { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85);
           align-items: center; justify-content: center; z-index: 50; cursor: zoom-out; }
-    #lb img { max-width: 92vw; max-height: 92vh; border-radius: 8px; box-shadow: 0 0 40px #000; }
+    #lb img { max-width: 96vw; max-height: 96vh; border-radius: 8px; box-shadow: 0 0 40px #000;
+              image-rendering: auto; }
     .off { color: #e79bb0; padding: 12px 0; }
     .empty { color: #7d838d; font-size: 13px; padding: 10px 4px; }
   </style>
@@ -1432,8 +1433,20 @@ SAYIM_PAGE = """
   <div id="lb" onclick="this.style.display='none'"><img id="lbimg" alt=""></div>
   <script>
     function fmt(ts){ return ts ? new Date(ts*1000).toLocaleTimeString('tr-TR') : ''; }
+    function sizeLb(im){
+      // Kucuk kirpintiyi 5 kat buyut. Oran korunur.
+      // max-width/height (%96) ekrana sigmayan durumda tasmayi keser.
+      if(!im.naturalWidth) return;
+      var s=5;                             // cift tik -> 5 kat buyut
+      im.style.width=(im.naturalWidth*s)+'px';
+      im.style.height='auto';
+    }
     function openLb(id){
-      var m=document.getElementById('lb'); document.getElementById('lbimg').src='/counts/'+id+'.jpg';
+      var m=document.getElementById('lb'), im=document.getElementById('lbimg');
+      im.style.width=''; im.style.height='';
+      im.onload=function(){ sizeLb(im); };
+      im.src='/counts/'+id+'.jpg';
+      if(im.complete && im.naturalWidth) sizeLb(im);   // onbellekten geldiyse
       m.style.display='flex';
     }
     function rows(list){
