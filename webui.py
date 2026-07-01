@@ -1500,15 +1500,19 @@ SAYIM_PAGE = """
       if(im.complete && im.naturalWidth) sizeLb(im);   // onbellekten geldiyse
       m.style.display='flex';
     }
+    // HTML kacisi: isim (/name ile KULLANICI girisi) ve kamera adi innerHTML'e
+    // basildigi icin XSS'i onler. Sayisal alanlar (id/ts) guvenli.
+    function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
     function rows(list){
       if(!list || !list.length) return '<div class="empty">Henuz kayit yok.</div>';
       return list.map(function(it, i){
-        var nm = it.name || '-';
+        var nm = it.name ? esc(it.name) : '-';
         var big = i < 5 ? ' big' : '';   // son 5 kisi buyuk, digerleri kucuk
         return '<div class="it'+big+'"><img src="/counts/'+it.id+'.jpg" ondblclick="openLb('+it.id+')"'
           + ' title="Cift tikla = buyut" onerror="this.style.visibility=\\'hidden\\'">'
           + '<div><div class="nm">'+nm+'</div>'
-          + '<div class="meta">'+(it.camera||'')+' &middot; '+fmt(it.ts)+'</div></div></div>';
+          + '<div class="meta">'+esc(it.camera||'')+' &middot; '+fmt(it.ts)+'</div></div></div>';
       }).join('');
     }
     function resetCounts(){
