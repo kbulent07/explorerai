@@ -280,14 +280,18 @@ class CameraWorker:
         for tid, direction in events:
             jpeg = None
             name = None
-            face = tid_face.get(tid)
-            # Once YUZ kirpintisi (varsa): hem kucuk resim hem isim eslemesi icin
-            fcrop = None
-            if face is not None:
-                fcrop = crop_with_margin(hires_frame, scale_bbox(face["bbox"], sx, sy), 0.3)
+            # ISIM icin: track boyunca yakalanan EN IYI yuz kirpintisini kullan
+            # (o karedeki yuz degil). Yan-yana/acisi-kacan kisi bir an bile yuzunu
+            # gostermisse best_crop onu tutar -> isim eslemesi cok daha saglam.
+            tr = self.manager.tracks.get(tid)
+            fcrop = getattr(tr, "best_crop", None) if tr is not None else None
+            if fcrop is None:
+                face = tid_face.get(tid)   # en iyi yuz yoksa bu karedeki yuze dus
+                if face is not None:
+                    fcrop = crop_with_margin(hires_frame, scale_bbox(face["bbox"], sx, sy), 0.3)
             crop = fcrop
             if crop is None:
-                # yuz yoksa govde kutusundan kucuk resim
+                # yuz hic yoksa govde kutusundan kucuk resim
                 dbbox = bbox_by_tid.get(tid)
                 if dbbox is not None:
                     crop = crop_with_margin(hires_frame, scale_bbox(dbbox, sx, sy), 0.1)
@@ -295,10 +299,10 @@ class CameraWorker:
                 ok, buf = cv.imencode(".jpg", crop, [cv.IMWRITE_JPEG_QUALITY, 80])
                 if ok:
                     jpeg = buf.tobytes()
-            # Isim: yuz kirpintisini kimlige bagla (senkron; gecis seyrek -> ucuz)
+            # Isim: en iyi yuzu kimlige bagla (senkron; gecis seyrek -> ucuz)
             if fcrop is not None and self.name_provider is not None:
                 try:
-                    name = self.name_provider(fcrop)
+                    name = self.name_provider(fcrop, self.camera.name, now)
                 except Exception:
                     log.exception("name_provider hatasi")
             self.counting_store.record(direction, ts=now, name=name,

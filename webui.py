@@ -129,16 +129,32 @@ if CONFIG.get("counting_enabled", False):
         log.warning("counting_enabled=true ama counting_camera/counting_line "
                     "eksik/gecersiz -> sayim KAPALI")
 
-def _name_provider(face_crop_bgr):
-    """Gecis aninda cagrilir: yuz kirpintisini embed edip RECENT'te en yakin
-    ISIMLI kimligin adini dondurur (yoksa None). Tanima kapaliysa None."""
+def _name_provider(face_crop_bgr, camera=None, ts=None):
+    """Gecis aninda cagrilir: yuz kirpintisini embed edip kimlik adini dondurur.
+    Once RECENT'te ISIMLI kimlikle esler; eslesme yoksa kimligi RECENT'e EKLER
+    (get-or-create) ve otomatik adini ('Kisi N') dondurur -> isim listesi dolar,
+    ayni kisinin sonraki gecisleri ayni ismi alir. Yuz dogrulanamazsa None."""
     if RECOG_PIPE is None:
         return None
     try:
         emb = RECOG_PIPE.recognizer.embed(face_crop_bgr)
     except Exception:
         return None
-    return RECENT.name_for_embedding(emb)
+    if emb is None:
+        return None
+    nm = RECENT.name_for_embedding(emb)
+    if nm:
+        return nm
+    # Eslesme yok -> kimligi olustur/guncelle, adini dondur
+    try:
+        ok, buf = cv.imencode(".jpg", face_crop_bgr, [cv.IMWRITE_JPEG_QUALITY, 85])
+        jpeg = buf.tobytes() if ok else b""
+        h, w = face_crop_bgr.shape[:2]
+        eid, _ = RECENT.add(camera or "sayim", (0, 0, w, h), jpeg, 0.5,
+                            ts=ts, embedding=emb)
+        return RECENT.name_of(eid)
+    except Exception:
+        return None
 
 
 # db=None -> DISKE/DB'ye yakalama YOK; en-net kareler yalniz bellekte (RECENT).

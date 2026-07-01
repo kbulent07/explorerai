@@ -181,6 +181,12 @@ class RecentFaceStore:
             e["name"] = name
             return True
 
+    def name_of(self, eid):
+        """Bir kimligin adini dondur (yoksa None)."""
+        with self._lock:
+            e = self._entries.get(int(eid))
+            return e.get("name") if e else None
+
     def name_for_embedding(self, embedding):
         """Verilen embedding'e en cok benzeyen (>= sim_threshold) ISIMLI kimligin
         adini dondur. Giris/cikis olayini bir kisiye baglamak icin kullanilir.
