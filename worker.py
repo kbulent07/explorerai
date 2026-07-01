@@ -13,7 +13,9 @@
 # -----------------------------------------------------------------------------
 
 import logging
+import threading
 import time
+from collections import deque
 
 import cv2 as cv
 
@@ -23,6 +25,53 @@ from tracking import (FaceTrackerManager, PersonTrackManager,
 from detection_backend import resolve_detection_config, build_person_detector
 
 log = logging.getLogger("facezoom.worker")
+
+
+class _NameResolver:
+    """Gecis aninda yuz -> isim cozumunu ANA DONGUDEN ayirir.
+
+    name_provider bir ArcFace embed'i calistirir (AGIR). Ana process() dongusunde
+    senkron cagrilirsa, ard arda gelen gecislerde canli akista kare takilmasina
+    yol acar. Bu yuzden cozum ayri thread + kucuk kuyrukta yapilir; kuyruk dolarsa
+    en eski is dusser (canlilik onceligi). Cozulen isim CountingStore olayina
+    (eid) yazilir (set_name)."""
+
+    def __init__(self, name_provider, counting_store, maxlen=32):
+        self._name_provider = name_provider
+        self._store = counting_store
+        self._dq = deque(maxlen=maxlen)   # dolarsa en eski dusser
+        self._cv = threading.Condition()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, name="name-resolver",
+                                        daemon=True)
+        self._thread.start()
+
+    def submit(self, eid, crop_bgr, camera, ts):
+        """Ana thread'den cagrilir; HIZLIDIR (yalniz kuyruga atar)."""
+        with self._cv:
+            self._dq.append((eid, crop_bgr, camera, ts))
+            self._cv.notify()
+
+    def stop(self):
+        self._stop.set()
+        with self._cv:
+            self._cv.notify_all()
+
+    def _loop(self):
+        while not self._stop.is_set():
+            with self._cv:
+                while not self._dq and not self._stop.is_set():
+                    self._cv.wait()
+                if self._stop.is_set():
+                    break
+                eid, crop, camera, ts = self._dq.popleft()
+            try:
+                name = self._name_provider(crop, camera, ts)
+            except Exception:
+                log.exception("name_provider hatasi (async)")
+                name = None
+            if name:
+                self._store.set_name(eid, name)
 
 
 def scale_bbox(bbox, sx, sy):
@@ -127,6 +176,11 @@ class CameraWorker:
         self._fps_t = time.time()
         self._fps = 0.0
         self._face_present = False
+
+        # Gecis isim cozumunu ana donguden ayir (yalniz sayim + isim saglayici varsa).
+        self._name_resolver = None
+        if self.name_provider is not None and self.counting_store is not None:
+            self._name_resolver = _NameResolver(self.name_provider, self.counting_store)
 
     def _ensure_transformer(self, fw, fh):
         if self.transformer is None:
@@ -250,8 +304,11 @@ class CameraWorker:
         else:
             output, zoomed = hires_frame, False
 
-        # cikti boyutuna olcekle
-        out_w, out_h = self.config.get("output_size", [1280, 720])
+        # cikti boyutuna olcekle (biçimsiz output_size -> guvenli varsayilan)
+        osz = self.config.get("output_size", [1280, 720])
+        if not (isinstance(osz, (list, tuple)) and len(osz) == 2):
+            osz = [1280, 720]
+        out_w, out_h = int(osz[0]), int(osz[1])
         if (output.shape[1], output.shape[0]) != (out_w, out_h):
             output = cv.resize(output, (out_w, out_h), interpolation=cv.INTER_LINEAR)
 
@@ -299,14 +356,13 @@ class CameraWorker:
                 ok, buf = cv.imencode(".jpg", crop, [cv.IMWRITE_JPEG_QUALITY, 80])
                 if ok:
                     jpeg = buf.tobytes()
-            # Isim: en iyi yuzu kimlige bagla (senkron; gecis seyrek -> ucuz)
-            if fcrop is not None and self.name_provider is not None:
-                try:
-                    name = self.name_provider(fcrop, self.camera.name, now)
-                except Exception:
-                    log.exception("name_provider hatasi")
-            self.counting_store.record(direction, ts=now, name=name,
-                                       camera=self.camera.name, jpeg=jpeg)
+            # Olayi ONCE isimsiz kaydet (canliligi bloke etme). Isim cozumu
+            # (ArcFace embed) AGIR -> ayri thread'de coz, cozulunce olayin adini
+            # set_name ile guncelle. (name burada None; asenkron doldurulur.)
+            eid = self.counting_store.record(direction, ts=now, name=name,
+                                             camera=self.camera.name, jpeg=jpeg)
+            if eid is not None and fcrop is not None and self._name_resolver is not None:
+                self._name_resolver.submit(eid, fcrop, self.camera.name, now)
 
     def _emit_capture(self, tr):
         """Bitmiss bir gorunumun en-net karesini DB'ye ve/veya callback'e ilet."""
@@ -346,4 +402,6 @@ class CameraWorker:
         now = time.time()
         for tr in self.manager.flush_all(now):
             self._emit_capture(tr)
+        if self._name_resolver is not None:
+            self._name_resolver.stop()
         self.tracker.close()

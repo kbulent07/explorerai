@@ -55,7 +55,19 @@ class _PreviewWorker:
 
     def stop(self):
         self._stop.set()
+        # ONCE isleme dongusunu bitir: finalize() tracker.close() cagirir; bu,
+        # dongu process() -> tracker.detect() icindeyken calisirsa mediapipe
+        # cokebilir. Dongu join edilmeden finalize CAGRILMAZ.
+        self._thread.join(timeout=5.0)
         self.camera.stop()
+        # Worker kaynaklarini birak: mediapipe dedektorunu kapat + varsa async
+        # isim-cozucu thread'ini durdur. Aksi halde kamera her durdurulusunda
+        # (silme/duzenleme/baglanti kesme) bu kaynaklar SIZAR. finalize bekleyen
+        # best-shot'lari da RECENT'e aktarir.
+        try:
+            self.worker.finalize()
+        except Exception:
+            log.exception("[%s] worker finalize hatasi", self.camera.name)
 
     def _loop(self):
         quality = [cv.IMWRITE_JPEG_QUALITY, 80]

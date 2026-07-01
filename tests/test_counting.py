@@ -64,6 +64,19 @@ def test_forget_track_durumu_temizler():
     assert counter.update([(1, _bbox_at(100, 150))], _DIMS) == []
 
 
+def test_last_sign_stale_track_budanir():
+    # forget() hic cagrilmasa da update() eski track durumlarini otomatik silmeli
+    # (ByteTrack id'leri monoton artar -> aksi halde sinirsiz buyur = bellek sizinti).
+    import time
+    counter = LineCrossingCounter(line=_LINE, forget_after=0.05)
+    counter.update([(1, _bbox_at(100, 50))], _DIMS)
+    assert 1 in counter._last_sign
+    time.sleep(0.1)
+    counter.update([(2, _bbox_at(120, 50))], _DIMS)   # 1 artik bayat -> budanmali
+    assert 1 not in counter._last_sign
+    assert 2 in counter._last_sign
+
+
 # --- CountingStore ---------------------------------------------------------
 
 def test_sayac_giris_cikis_iceride():
@@ -110,3 +123,15 @@ def test_max_events_tasmasi():
     c = s.counts()
     assert c["in"] == 5
     assert len(c["entered"]) == 3
+
+
+def test_set_name_olayi_sonradan_isimlendirir():
+    # Asenkron isim cozumu: olay once isimsiz, sonra set_name ile isimlenir.
+    s = CountingStore()
+    eid = s.record("giris", ts=1.0)          # isimsiz
+    assert s.counts()["entered"][0]["name"] is None
+    assert s.set_name(eid, "Ayse") is True
+    assert s.counts()["entered"][0]["name"] == "Ayse"
+    # Bilinmeyen id / bos isim -> False
+    assert s.set_name(99999, "X") is False
+    assert s.set_name(eid, "  ") is False

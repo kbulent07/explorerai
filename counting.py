@@ -35,7 +35,7 @@ class LineCrossingCounter:
     hatirlar; isaret degisince (cizgiyi gecince) bir olay uretir.
     """
 
-    def __init__(self, line, swap=False):
+    def __init__(self, line, swap=False, forget_after=60.0):
         # line NORMALIZE koordinattir (0..1): [x1,y1,x2,y2]. Boylece detect
         # cozunurlugu ne olursa olsun ayni cizgi gecerli (kameraya tikla-ciz UI
         # de normalize uretir). Piksele cevrim update() icinde dims ile yapilir.
@@ -43,12 +43,17 @@ class LineCrossingCounter:
         self.n1 = (float(x1), float(y1))
         self.n2 = (float(x2), float(y2))
         self.swap = bool(swap)
-        self._last_sign = {}   # track_id -> son isaret (+1 / -1)
+        # track_id -> [son_isaret(+1/-1), son_gorulme_ts]. ByteTrack id'leri MONOTON
+        # artar; bu sozluk update()'te otomatik budanmazsa uzun sureli sayimda
+        # SINIRSIZ buyur (bellek sizintisi). forget_after sn goruunmeyen track silinir.
+        self._last_sign = {}
+        self._forget_after = float(forget_after)
 
     def update(self, tracks, dims):
         """tracks: [(track_id, (x,y,w,h)), ...] (detect piksel).
         dims: (w, h) detect uzayi boyutu -> normalize cizgi piksele cevrilir.
         Gecis olaylarini [(track_id, 'giris'|'cikis'), ...] dondurur."""
+        now = time.time()
         w_d, h_d = float(dims[0]), float(dims[1])
         p1 = (self.n1[0] * w_d, self.n1[1] * h_d)
         p2 = (self.n2[0] * w_d, self.n2[1] * h_d)
@@ -62,13 +67,18 @@ class LineCrossingCounter:
             if sign == 0:
                 continue  # tam cizgi uzerinde: kararsiz, atla
             prev = self._last_sign.get(tid)
-            self._last_sign[tid] = sign
-            if prev is not None and prev != sign:
+            self._last_sign[tid] = [sign, now]
+            if prev is not None and prev[0] != sign:
                 # -1 -> +1 yonu "giris" kabul; swap ile ters cevrilir
                 direction = "giris" if sign > 0 else "cikis"
                 if self.swap:
                     direction = "cikis" if direction == "giris" else "giris"
                 events.append((tid, direction))
+        # Uzun suredir gorulmeyen track durumlarini unut (bellek sismesin).
+        cutoff = now - self._forget_after
+        stale = [t for t, v in self._last_sign.items() if v[1] < cutoff]
+        for t in stale:
+            del self._last_sign[t]
         return events
 
     def forget(self, track_ids):
@@ -140,6 +150,20 @@ class CountingStore:
                 "diag": {"track_obs": self.track_obs, "last_tracks": self.last_tracks,
                          "crossings": self.crossings},
             }
+
+    def set_name(self, eid, name):
+        """Bir olayin ismini SONRADAN guncelle (asenkron isim cozumu icin).
+        Isim cozumu (ArcFace embed) ana donguyu bloke etmesin diye olay once
+        isimsiz kaydedilir; cozulunce bu metodla adi yazilir. Bulundu mu doner."""
+        name = (name or "").strip() or None
+        if name is None:
+            return False
+        with self._lock:
+            for e in self._events:
+                if e["id"] == int(eid):
+                    e["name"] = name
+                    return True
+        return False
 
     def get_jpeg(self, eid):
         with self._lock:
