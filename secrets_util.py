@@ -163,6 +163,23 @@ def decrypt_url_password(url):
     return f"{scheme}://{user}:{urllib.parse.quote(real, safe='')}@{host}"
 
 
+def password_encrypted_but_unresolved(url):
+    """URL parolasi SIFRELI (enc$) ama COZULEMIYOR mu? (anahtar eksik/yanlis).
+
+    True doner -> kamera bu parolayla baglanamaz (enc$ string'i ham parola gibi
+    gonderilir, kimlik dogrulama basarisiz). En sik sebep: config.yaml baska bir
+    PC'ye tasindi ama .env (FACEZOOM_SECRET_KEY) tasinmadi ya da setup yeni bir
+    anahtar uretti. Cagiran (camera / web ayarlar) net uyari verebilir."""
+    parts = _split_url(url)
+    if not parts:
+        return False
+    pw = parts[2]
+    if not is_encrypted(pw):
+        return False
+    # Cozulemezse decrypt() token'i AYNEN dondurur (fernet None ya da InvalidToken).
+    return decrypt(pw) == pw
+
+
 def mask_url_password(url):
     """Arayuzde gostermek icin parolayi '****' ile maskele."""
     parts = _split_url(url)

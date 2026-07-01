@@ -81,3 +81,31 @@ def test_kimliksiz_url_dokunulmaz():
     u = "rtsp://10.0.0.1:554/x"   # user:pass yok
     assert s.mask_url_password(u) == u
     assert s.encrypt_url_password(u) == u
+
+
+# --- COZULEMEYEN parola tespiti (baska PC / anahtar kayip senaryosu) ---
+
+def test_unresolved_anahtar_yokken_true():
+    # Bilgisayar A'da (anahtar VAR) sifrele...
+    _with_key()
+    enc = s.encrypt_url_password("rtsp://admin:gizli@10.0.0.1:554/x")
+    assert not s.password_encrypted_but_unresolved(enc)   # A'da cozulur
+    # ...Bilgisayar B'ye .env tasinmadan git (anahtar YOK)
+    os.environ["FACEZOOM_SECRET_KEY"] = "test-secret-key-123"  # A'nin anahtari (kalsin)
+    _without_key()
+    assert s.password_encrypted_but_unresolved(enc)        # B'de COZULEMEZ -> True
+
+
+def test_unresolved_yanlis_anahtarla_true():
+    _with_key()
+    enc = s.encrypt_url_password("rtsp://admin:gizli@10.0.0.1:554/x")
+    # Farkli anahtar (setup B'de yeni uretmis gibi)
+    os.environ["FACEZOOM_SECRET_KEY"] = "bambaska-bir-anahtar-999"
+    _reset()
+    assert s.password_encrypted_but_unresolved(enc)        # yanlis anahtar -> True
+
+
+def test_unresolved_duz_metin_ve_bozuk_false():
+    _without_key()
+    assert not s.password_encrypted_but_unresolved("rtsp://admin:duz@10.0.0.1:554/x")
+    assert not s.password_encrypted_but_unresolved("bozuk-url")

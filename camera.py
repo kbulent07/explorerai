@@ -96,6 +96,14 @@ class StreamReader:
             # Parola config'te sifreli (enc$...) olabilir -> VideoCapture'a GERCEK
             # URL verilir. Duz-metin URL'ler oldugu gibi gecer (geri uyum).
             import secrets_util
+            # Sifre COZULEMIYORSA (anahtar eksik/yanlis) enc$ ham parola gibi gider
+            # ve kimlik dogrulama basarisiz olur -> sebebi NET logla (aksi halde
+            # yalniz "acilamadi" gorunur, kullanici parola/anahtar sorununu bilemez).
+            if secrets_util.password_encrypted_but_unresolved(self.source):
+                log.error("[%s] RTSP parolasi COZULEMEDI: FACEZOOM_SECRET_KEY (.env) "
+                          "eksik veya farkli. Baska PC'ye tasirken .env dosyasini "
+                          "BIRLIKTE getirin ya da kamerayi silip parolasiyla yeniden "
+                          "ekleyin. Kamera baglanamayacak.", self.name)
             src = secrets_util.decrypt_url_password(self.source)
             cap = cv.VideoCapture(src, cv.CAP_FFMPEG)
             # Buffer'i kucuk tut (destekleyen backend'lerde) -> daha az gecikme

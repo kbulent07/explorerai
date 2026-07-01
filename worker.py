@@ -182,6 +182,11 @@ class CameraWorker:
         if self.name_provider is not None and self.counting_store is not None:
             self._name_resolver = _NameResolver(self.name_provider, self.counting_store)
 
+        # Yakalama hatti teshisi: yuzler NEREDE kayboluyor gorunur olsun (galeri
+        # bos kalinca sebep bulmak icin). Periyodik (30 sn) INFO loglanir.
+        self._diag = {"cycles": 0, "faces": 0, "paired": 0, "emitted": 0}
+        self._diag_t = time.time()
+
     def _ensure_transformer(self, fw, fh):
         if self.transformer is None:
             self.transformer = FrameTransformer(
@@ -255,6 +260,8 @@ class CameraWorker:
             faces = [f for f in faces if f["bbox"][3] >= self.min_face_size]
             self._faces = faces
             frame_area = float(hw * hh)
+            self._diag["cycles"] += 1
+            self._diag["faces"] += len(faces)
 
             tracks = []       # [(track_id, (x,y,w,h))] detect koord. (sayim icin)
             tid_face = {}     # track_id -> face dict (sayim isim eslemesi icin)
@@ -268,6 +275,7 @@ class CameraWorker:
                 dropped = len(faces) - len(pairs)
                 if dropped > 0:
                     log.debug("%d yuz iceren kisi kutusu bulunamadi (dusuruldu)", dropped)
+                self._diag["paired"] += len(pairs)
                 for tid, face in pairs:
                     tid_face[tid] = face
                     self._record_best(tid, face, sx, sy, hires_frame, frame_area, now)
@@ -290,8 +298,26 @@ class CameraWorker:
         self._face_present = len(self._faces) > 0
 
         # --- bitmiss gorunumleri isle (DB ve/veya bellek deposu) -------------
-        for tr in self.manager.collect_finished(now):
+        finished = self.manager.collect_finished(now)
+        for tr in finished:
             self._emit_capture(tr)
+        self._diag["emitted"] += len(finished)
+
+        # --- yakalama teshisi (periyodik) -> yuzler nerede kayboluyor? -------
+        if now - self._diag_t >= 30.0:
+            d = self._diag
+            hint = ""
+            if d["cycles"] > 0 and d["faces"] == 0:
+                hint = " -> MediaPipe YUZ BULAMIYOR (tepeden/uzak/dussuk-coz.; " \
+                       "detect_on_hires: true veya cpu_profile: normal/high, min_face_size dussur)"
+            elif self.backend == "yolox_person" and d["faces"] > 0 and d["paired"] == 0:
+                hint = " -> yuzler kisi kutusuna ESLESMIYOR"
+            elif d["faces"] > 0 and d["emitted"] == 0:
+                hint = " -> best-shot emit edilmedi (track bitmiyor?)"
+            log.info("[%s] yakalama tani(30s): %d dongu, %d yuz, %d eslesme, %d best-shot%s",
+                     self.camera.name, d["cycles"], d["faces"], d["paired"], d["emitted"], hint)
+            self._diag = {"cycles": 0, "faces": 0, "paired": 0, "emitted": 0}
+            self._diag_t = now
 
         # --- canli zoom (en buyuk = en yakin yuze odaklan) -------------------
         # zoom_enabled False -> tam kareyi oldugu gibi goster (pan/zoom yok).

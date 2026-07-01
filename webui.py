@@ -340,6 +340,11 @@ SETTINGS_PAGE = """
         <td class="url">
           detect: {{ cam.get('detect_url', '-') | maskurl }}<br>
           hires : {{ (cam.get('hires_url') | maskurl) if cam.get('hires_url') else '(tek akis)' }}
+          {% if idx in unresolved %}
+          <br><span style="color:#e79bb0;font-weight:600;">&#9888; Parola cozulemiyor
+            (FACEZOOM_SECRET_KEY / .env eksik veya farkli). Kamera baglanamaz &mdash;
+            .env'i tasiyin ya da &laquo;Duzenle&raquo; ile parolayi yeniden girin.</span>
+          {% endif %}
         </td>
         <td style="white-space:nowrap;">
           <button class="edit" type="button" onclick="toggleEdit({{ idx }})">Duzenle</button>
@@ -436,9 +441,20 @@ SETTINGS_PAGE = """
 @app.route("/settings")
 @require_auth
 def settings(message=None, ok=False):
+    cameras = config_store.list_cameras()
+    # Parolasi COZULEMEYEN kameralar (anahtar eksik/yanlis) -> arayuzde uyar.
+    # En sik: config baska PC'ye .env olmadan tasindi -> kamera baglanamaz.
+    unresolved = set()
+    for idx, cam in cameras:
+        for key in ("detect_url", "hires_url"):
+            u = (cam or {}).get(key)
+            if u and secrets_util.password_encrypted_but_unresolved(u):
+                unresolved.add(idx)
+                break
     return render_template_string(
         SETTINGS_PAGE,
-        cameras=config_store.list_cameras(),
+        cameras=cameras,
+        unresolved=unresolved,
         cpu_profile=perf.resolve_profile(CONFIG),
         detector_backend=str(CONFIG.get("detector_backend", "mediapipe")).lower(),
         recog_on=(RECOG_PIPE is not None),

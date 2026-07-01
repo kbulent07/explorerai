@@ -96,6 +96,8 @@ class RecognitionPipeline:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, name="recognition",
                                         daemon=True)
+        self._dropped = 0          # require_face ile SAKLANMAYAN yakalama sayisi
+        self._load_failed = False  # taniyici yuklenemedi (model/CUDA/kurulum)?
 
     def start(self):
         self._thread.start()
@@ -124,12 +126,34 @@ class RecognitionPipeline:
             # --- agir kisim (kuyruk disinda) ---
             try:
                 emb = self.recognizer.embed(crop)
+                embed_error = False
             except Exception:
-                log.exception("embedding hatasi")
                 emb = None
-            # Yuz dogrulanmadiysa (yuz olmayan kare / yanlis pozitif) -> SAKLAMA
-            if emb is None and self.require_face:
-                continue
+                embed_error = True
+                if not self._load_failed:   # ilk hatanin izini BIR kez ver
+                    log.exception("Yuz tanima (insightface) calistirilamadi -> "
+                                  "yuzler embedding'siz saklanacak (kimlik eslesmez)")
+                self._load_failed = True
+
+            if emb is None:
+                if embed_error:
+                    # Taniyici CALISMADI (model inmemis / CUDA / kurulum). Yuzu
+                    # DUSURME -> galeri bos kalmasin; embed'siz sakla. Bu kirpinti
+                    # zaten MediaPipe yuz tespitinden gecti; require_face bir IKINCI
+                    # filtredir ve o filtre bozuksa MediaPipe'a guvenmek makuldur.
+                    pass
+                elif self.require_face:
+                    # insightface CALISTI ama kirpintida yuz DOGRULAMADI -> yanlis
+                    # pozitif filtresi. Kucuk/uzak/dussuk-coz. yuzlerde SIK olur ve
+                    # galeriyi bossaltir; sebebi gorulmesin diye periyodik logla.
+                    self._dropped += 1
+                    if self._dropped == 1 or self._dropped % 25 == 0:
+                        log.warning("recognition_required=true: %d yakalama insightface "
+                                    "yuz dogrulamadigi icin SAKLANMADI (galeri bos "
+                                    "kalabilir). Kucuk/uzak yuzlerde beklenir; galeriyi "
+                                    "doldurmak icin config.yaml'da recognition_required: "
+                                    "false yapin.", self._dropped)
+                    continue
             ok, buf = cv.imencode(".jpg", crop, [cv.IMWRITE_JPEG_QUALITY, 85])
             if not ok:
                 continue
