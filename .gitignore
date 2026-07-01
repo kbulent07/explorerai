@@ -30,3 +30,8 @@ facezoom.db-wal
 .vscode/
 .idea/
 *.log
+.env
+
+# YOLOX modeli (buyuk binary; README'deki adimlarla edinilir)
+models/*.onnx
+*.tar.gz

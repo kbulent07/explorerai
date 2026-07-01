@@ -24,6 +24,7 @@ from flask import (
 )
 
 import config_store
+import secrets_util
 from live import LiveManager
 from recent import RecentFaceStore
 from recognition import FaceRecognizer, RecognitionPipeline
@@ -37,8 +38,9 @@ logging.basicConfig(
 )
 
 # --- config (galeri/DB kaldirildi; her sey bellek-ici) ---
+import perf
 with open("config.yaml", "r", encoding="utf-8") as f:
-    CONFIG = yaml.safe_load(f)
+    CONFIG = perf.apply_cpu_profile(yaml.safe_load(f))
 
 WEB = CONFIG.get("web", {})
 log = logging.getLogger("facezoom.web")
@@ -82,6 +84,7 @@ if _RECOGNITION_ON:
         model_name=CONFIG.get("recognition_model", "buffalo_l"),
         det_size=CONFIG.get("recognition_det_size", 320),
         min_det_score=CONFIG.get("recognition_min_det_score", 0.5),
+        providers=perf.onnx_providers(CONFIG),   # compute_device: cpu|gpu
     )
     # NOT: thread'i import aninda DEGIL, __main__'de start() ediyoruz (modulu
     # test/araclar icin import etmek agir thread baslatmasin). Yakalama yalniz
@@ -107,11 +110,46 @@ def _on_capture(camera_name, crop_bgr, bbox, quality, first_seen, last_seen, bes
             RECENT.add(camera_name, bbox, buf.tobytes(), quality, ts=best_time)
 
 
+# --- GIRIS/CIKIS sayimi (opsiyonel; cizgi-gecis, RAM-ici) ---
+from counting import LineCrossingCounter, CountingStore
+
+COUNTING = None          # CountingStore (panel + olaylar)
+_COUNT_CAM = None         # sayim yapilacak kamera adi
+_LINE_COUNTER = None      # LineCrossingCounter
+if CONFIG.get("counting_enabled", False):
+    _COUNT_CAM = (CONFIG.get("counting_camera") or "").strip() or None
+    _line = CONFIG.get("counting_line") or []
+    if _COUNT_CAM and isinstance(_line, (list, tuple)) and len(_line) == 4:
+        COUNTING = CountingStore()
+        _LINE_COUNTER = LineCrossingCounter(
+            line=_line, swap=bool(CONFIG.get("counting_swap", False)))
+        log.info("Giris/cikis sayimi AKTIF: kamera=%s cizgi=%s swap=%s",
+                 _COUNT_CAM, _line, CONFIG.get("counting_swap", False))
+    else:
+        log.warning("counting_enabled=true ama counting_camera/counting_line "
+                    "eksik/gecersiz -> sayim KAPALI")
+
+def _name_provider(face_crop_bgr):
+    """Gecis aninda cagrilir: yuz kirpintisini embed edip RECENT'te en yakin
+    ISIMLI kimligin adini dondurur (yoksa None). Tanima kapaliysa None."""
+    if RECOG_PIPE is None:
+        return None
+    try:
+        emb = RECOG_PIPE.recognizer.embed(face_crop_bgr)
+    except Exception:
+        return None
+    return RECENT.name_for_embedding(emb)
+
+
 # db=None -> DISKE/DB'ye yakalama YOK; en-net kareler yalniz bellekte (RECENT).
-LIVE = LiveManager(CONFIG, db=None, on_capture=_on_capture)
+LIVE = LiveManager(CONFIG, db=None, on_capture=_on_capture,
+                   counting_camera=_COUNT_CAM, line_counter=_LINE_COUNTER,
+                   counting_store=COUNTING, name_provider=_name_provider)
 
 
 app = Flask(__name__)
+# Arayuzde RTSP parolasini gizlemek icin maske filtresi ({{ url | maskurl }})
+app.jinja_env.filters["maskurl"] = secrets_util.mask_url_password
 
 
 # --- basit kullanici/parola korumasi (HTTP Basic) ---
@@ -205,6 +243,56 @@ SETTINGS_PAGE = """
 
     {% if message %}<div class="msg {{ 'ok' if ok else 'err' }}">{{ message }}</div>{% endif %}
 
+    <h2>Tespit Arka Ucu</h2>
+    <form class="add" method="post" action="{{ url_for('set_detector_backend') }}"
+          style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <select name="backend">
+        <option value="mediapipe" {{ 'selected' if detector_backend == 'mediapipe' else '' }}>MediaPipe (yuz) &mdash; hafif</option>
+        <option value="yolox_person" {{ 'selected' if detector_backend == 'yolox_person' else '' }}>YOLOX (govde) &mdash; giris/cikis sayimi icin onerilen</option>
+      </select>
+      <button type="submit">Uygula</button>
+      <span class="hint" style="margin:0;">Koridorda sayim icin <b>YOLOX (govde)</b> sec: kisi cizgiyi
+        gecerken govdesi iki taraftan da gorunur (yuz kaybolsa da sayar). Model: models/yolox_nano.onnx.</span>
+    </form>
+
+    <h2>Islemci Profili</h2>
+    <form class="add" method="post" action="{{ url_for('set_cpu_profile') }}"
+          style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <select name="profile">
+        <option value="normal" {{ 'selected' if cpu_profile == 'normal' else '' }}>Normal (varsayilan)</option>
+        <option value="low" {{ 'selected' if cpu_profile == 'low' else '' }}>Dussuk CPU</option>
+      </select>
+      <button type="submit">Uygula</button>
+      <span class="hint" style="margin:0;">Dussuk CPU: algilama sub-akista, dussuk fps/cozunurluk,
+        zoom kapali. Secince CANLI uygulanir (kameralar kisa sure yeniden baslar).</span>
+    </form>
+
+    <h2>Yuz Tanima Cozunurlugu</h2>
+    {% if recog_on %}
+    <form class="add" method="post" action="{{ url_for('set_recognition_detsize') }}"
+          style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <select name="det_size">
+        {% for o in det_size_options %}
+        <option value="{{ o }}" {{ 'selected' if o == det_size else '' }}>{{ o }} px{{ ' (varsayilan)' if o == 320 else '' }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Uygula</button>
+      <span class="hint" style="margin:0;">Kucuk (160) = hizli/az CPU (kucuk yuzleri kacirabilir),
+        buyuk (640) = daha dogru/yavas. Secince CANLI uygulanir.</span>
+    </form>
+    {% else %}
+    <p class="hint">Yuz tanima kapali (recognition_enabled: false).</p>
+    {% endif %}
+
+    <h2>Giris/Cikis Sayimi</h2>
+    <p class="hint" style="margin:0 0 10px;">Bir kamerayi giris/cikis koridoru olarak ayarla:
+      goruntude bir <b>cizgi ciz</b>, yesil ok ile <b>GIRIS yonunu</b> sec, sayimi etkinlestir.
+      Sayim, cizgiyi gecen kisiyi yonune gore giris/cikis sayar.</p>
+    <p>
+      <a href="{{ url_for('counting_setup') }}"><button type="button">&#9999; Cizgi / Yon Ayari</button></a>
+      <a href="{{ url_for('sayim') }}"><button type="button" style="margin-left:8px;">&#128202; Sayim Paneli</button></a>
+    </p>
+
     <h2>Tanimli Kameralar</h2>
     {% if cameras %}
     <table>
@@ -215,8 +303,8 @@ SETTINGS_PAGE = """
         <td>{{ cam.get('name', '-') }}<br>
           <a href="{{ url_for('watch') }}" style="font-size:12px;">&#128250; izle</a></td>
         <td class="url">
-          detect: {{ cam.get('detect_url', '-') }}<br>
-          hires : {{ cam.get('hires_url', '(tek akis)') }}
+          detect: {{ cam.get('detect_url', '-') | maskurl }}<br>
+          hires : {{ (cam.get('hires_url') | maskurl) if cam.get('hires_url') else '(tek akis)' }}
         </td>
         <td style="white-space:nowrap;">
           <button class="edit" type="button" onclick="toggleEdit({{ idx }})">Duzenle</button>
@@ -236,12 +324,12 @@ SETTINGS_PAGE = """
                 <input type="text" name="name" value="{{ cam.get('name','') }}" required></div>
             </div>
             <div class="row">
-              <div class="field"><label>detect_url (sub)</label>
-                <input type="text" name="detect_url" value="{{ cam.get('detect_url','') }}" required></div>
+              <div class="field"><label>detect_url (sub) &mdash; parola gizli (**** birak = degistirme)</label>
+                <input type="text" name="detect_url" value="{{ cam.get('detect_url','') | maskurl }}" required></div>
             </div>
             <div class="row">
               <div class="field"><label>hires_url (main &mdash; bos birakirsan tek akis)</label>
-                <input type="text" name="hires_url" value="{{ cam.get('hires_url','') }}"></div>
+                <input type="text" name="hires_url" value="{{ (cam.get('hires_url') | maskurl) if cam.get('hires_url') else '' }}"></div>
             </div>
             <button type="submit">Kaydet</button>
             <button type="button" class="cancel" onclick="toggleEdit({{ idx }})">Vazgec</button>
@@ -316,8 +404,82 @@ def settings(message=None, ok=False):
     return render_template_string(
         SETTINGS_PAGE,
         cameras=config_store.list_cameras(),
+        cpu_profile=perf.resolve_profile(CONFIG),
+        detector_backend=str(CONFIG.get("detector_backend", "mediapipe")).lower(),
+        recog_on=(RECOG_PIPE is not None),
+        det_size=int(CONFIG.get("recognition_det_size", 320)),
+        det_size_options=_DETSIZE_OPTIONS,
         message=message, ok=ok,
     )
+
+
+# Yuz tanima dedektoru giris cozunurlugu secenekleri (kucuk=hizli, buyuk=dogru)
+_DETSIZE_OPTIONS = [160, 224, 320, 480, 640]
+
+
+@app.route("/detector-backend", methods=["POST"])
+@require_auth
+def set_detector_backend():
+    """Tespit arka ucunu degistir (mediapipe|yolox_person) ve CANLI uygula.
+    yolox_person: govde tespiti + ByteTrack -> koridorda sayim icin onerilen
+    (model models/yolox_nano.onnx gerekli; yoksa mediapipe'e duser)."""
+    global CONFIG
+    b = (request.form.get("backend") or "mediapipe").strip().lower()
+    if b not in ("mediapipe", "yolox_person"):
+        b = "mediapipe"
+    config_store.set_values({"detector_backend": b})
+    with open("config.yaml", "r", encoding="utf-8") as f:
+        CONFIG = perf.apply_cpu_profile(yaml.safe_load(f))
+    LIVE.config = CONFIG
+    LIVE.stop_all()
+    LIVE.start_all()
+    log.info("Tespit arka ucu -> %s (worker'lar yeniden baslatildi)", b)
+    return settings(message=f"Tespit arka ucu: {b} — uygulandi.", ok=True)
+
+
+@app.route("/recognition-detsize", methods=["POST"])
+@require_auth
+def set_recognition_detsize():
+    """Yuz tanima dedektor giris boyutunu degistir ve CANLI uygula (taniyiciyi
+    yeni boyutla yeniden kur; sonraki embed bu boyutla yuklenir)."""
+    global CONFIG
+    try:
+        val = int(request.form.get("det_size"))
+    except (TypeError, ValueError):
+        return settings(message="Gecersiz cozunurluk.", ok=False)
+    if val not in _DETSIZE_OPTIONS:
+        val = min(_DETSIZE_OPTIONS, key=lambda o: abs(o - val))   # en yakina yuvarla
+    config_store.set_values({"recognition_det_size": val})
+    CONFIG["recognition_det_size"] = val
+    if RECOG_PIPE is not None:
+        RECOG_PIPE.recognizer = FaceRecognizer(
+            model_name=CONFIG.get("recognition_model", "buffalo_l"),
+            det_size=val,
+            min_det_score=CONFIG.get("recognition_min_det_score", 0.5),
+            providers=perf.onnx_providers(CONFIG),
+        )
+        log.info("recognition_det_size -> %d (taniyici yeniden kuruldu)", val)
+    return settings(message=f"Tanima cozunurlugu: {val}px — uygulandi.", ok=True)
+
+
+@app.route("/cpu-profile", methods=["POST"])
+@require_auth
+def set_cpu_profile():
+    """Islemci profilini degistir (normal|low) ve CANLI uygula (worker'lari
+    yeni ayarla yeniden baslat)."""
+    global CONFIG
+    prof = (request.form.get("profile") or "normal").strip().lower()
+    if prof not in perf.VALID_PROFILES:
+        prof = "normal"
+    config_store.set_values({"cpu_profile": prof})
+    # config'i tazele + profili uygula + worker'lari yeniden baslat (canli etki)
+    with open("config.yaml", "r", encoding="utf-8") as f:
+        CONFIG = perf.apply_cpu_profile(yaml.safe_load(f))
+    LIVE.config = CONFIG
+    LIVE.stop_all()
+    LIVE.start_all()
+    log.info("Islemci profili degistirildi: %s (worker'lar yeniden baslatildi)", prof)
+    return settings(message=f"Islemci profili: {prof} — uygulandi.", ok=True)
 
 
 @app.route("/settings/add", methods=["POST"])
@@ -447,10 +609,18 @@ WATCH_PAGE = """
         font-size: 13px; background: #0c0d10; }
     .livewrap.paused .pausedlabel { display: flex; }
     .livewrap.paused img.live { visibility: hidden; }
+    /* baglanti kesildi overlay'i (sunucu RTSP baglantisi kapali) */
+    .livewrap .disclabel { display: none; position: absolute; inset: 0;
+        align-items: center; justify-content: center; color: #e79bb0;
+        font-size: 13px; background: #0c0d10; }
+    .livewrap.disconnected .disclabel { display: flex; }
+    .livewrap.disconnected .pausedlabel { display: none; }
+    .livewrap.disconnected img.live { visibility: hidden; }
     /* canli oynatma durdur/oynat dugmeleri */
     button.pp { background: #2a2e36; border: 1px solid #3a3f4a; color: #cdd2da;
                 border-radius: 6px; padding: 2px 9px; font-size: 11px; cursor: pointer; }
     button.pp:hover { border-color: #3a86ff; }
+    button.pp.conn[data-off="1"] { background: #3a1620; border-color: #6b2c3a; color: #e79bb0; }
     button.pp.allbtn { margin-left: 8px; }
 
     /* ORTA: DIKEY bolme -> SOL %70 buyuk resim, SAG %30 son 5 kisi (alt alta) */
@@ -503,6 +673,7 @@ WATCH_PAGE = """
 <body>
   <header><h1>FaceZoom &mdash; Canli Izleme
     <a href="#" onclick="openPopup();return false;" style="font-size:13px;font-weight:400;margin-left:12px;">&#8599; Popup Pencere</a>
+    <a href="{{ url_for('sayim') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#128202; Giris/Cikis Sayim</a>
     <a href="{{ url_for('settings') }}" style="font-size:13px;font-weight:400;margin-left:12px;">Kamera Ayarlari</a>
   </h1></header>
 
@@ -512,7 +683,7 @@ WATCH_PAGE = """
     <div class="col col-cams">
       <div class="colhead">Kameralar
         <button class="pp allbtn" type="button" id="allbtn" onclick="toggleAll()"
-                title="Sadece gosterimi durdurur; yakalama arka planda devam eder">Tumunu Durdur</button>
+                title="Yalniz goruntuyu gizler; yakalama arka planda devam eder">Tumunu Gizle</button>
         <button class="pp allbtn" type="button" id="allzoom" onclick="toggleZoomAll()"
                 title="Tum kameralari saga-sola kaymadan tam kare goster">{{ 'Tumunu Normal' if zoom_default else 'Tumu Yuz Takibi' }}</button>
       </div>
@@ -521,16 +692,20 @@ WATCH_PAGE = """
         <div class="t"><span>{{ n }}</span>
           <span>
             <button class="pp" type="button" data-cam="{{ n }}" onclick="toggleCam(this)"
-                    title="Sadece gosterimi durdurur; yakalama devam eder">Durdur</button>
+                    title="Yalniz kamera goruntusunu gizler; yakalama devam eder">Goruntuyu Gizle</button>
             <button class="pp" type="button" data-zoom-cam="{{ n }}" onclick="toggleZoom(this)"
                     title="Saga-sola kaymadan tam kare goster">{{ 'Normal Goster' if zoom_default else 'Yuz Takibi' }}</button>
+            <button class="pp conn" type="button" data-conn-cam="{{ n }}"
+                    data-off="{{ '1' if n in disconnected else '' }}" onclick="toggleConn(this)"
+                    title="Kamerayla baglantiyi tamamen kes (RTSP birakilir)">{{ 'Baglan' if n in disconnected else 'Baglanti Kes' }}</button>
             <span class="cnt" data-cnt="{{ n }}">0 kisi</span>
           </span>
         </div>
-        <div class="livewrap" ondblclick="toggleFs(this)" title="Cift tikla = tam ekran">
+        <div class="livewrap {{ 'disconnected' if n in disconnected else '' }}" ondblclick="toggleFs(this)" title="Cift tikla = tam ekran">
           <img class="live" data-name="{{ n }}" data-live="{{ url_for('live', name=n) }}"
-               src="{{ url_for('live', name=n) }}" alt="{{ n }}">
-          <div class="pausedlabel">&#9208; Duraklatildi</div>
+               {% if n not in disconnected %}src="{{ url_for('live', name=n) }}"{% endif %} alt="{{ n }}">
+          <div class="pausedlabel">&#128065; Goruntu gizli</div>
+          <div class="disclabel">&#128683; Baglanti kesildi</div>
         </div>
       </div>
       {% endfor %}
@@ -580,7 +755,7 @@ WATCH_PAGE = """
         if(wrap) wrap.classList.add('paused');
       }
     }
-    function setBtn(btn, stopped){ if(btn) btn.textContent = stopped ? 'Oynat' : 'Durdur'; }
+    function setBtn(btn, stopped){ if(btn) btn.textContent = stopped ? 'Goster' : 'Goruntuyu Gizle'; }
     function syncAllBtn(){
       const imgs = document.querySelectorAll('img.live');
       const allStopped = imgs.length > 0 && [...imgs].every(im => stoppedCams.has(im.dataset.name));
@@ -588,7 +763,7 @@ WATCH_PAGE = """
     }
     function setBtnAll(allStopped){
       const b = document.getElementById('allbtn');
-      if(b) b.textContent = allStopped ? 'Tumunu Oynat' : 'Tumunu Durdur';
+      if(b) b.textContent = allStopped ? 'Tumunu Goster' : 'Tumunu Gizle';
     }
     function toggleCam(btn){
       const name = btn.dataset.cam;
@@ -648,6 +823,29 @@ WATCH_PAGE = """
       const allOff = names.length > 0 && names.every(n => !zoomState[n]);
       const b = document.getElementById('allzoom');
       if(b) b.textContent = allOff ? 'Tumu Yuz Takibi' : 'Tumunu Normal';
+    }
+    // --- kamerayla baglantiyi TAMAMEN kes / yeniden bagla (sunucu tarafi) ---
+    function toggleConn(btn){
+      const name = btn.dataset.connCam;
+      const img = document.querySelector('img.live[data-name="' + name + '"]');
+      const wrap = img ? img.closest('.livewrap') : null;
+      const off = btn.dataset.off === '1';
+      const fd = new FormData(); fd.append('name', name);
+      if(off){
+        // tekrar bagla
+        fetch('{{ url_for("connect_cam") }}', {method:'POST', body:fd}).then(() => {
+          btn.dataset.off = ''; btn.textContent = 'Baglanti Kes';
+          if(wrap) wrap.classList.remove('disconnected');
+          if(img) img.src = img.dataset.live + '?t=' + Date.now();   // taze akis
+        });
+      } else {
+        if(!confirm(name + ': kamerayla baglanti tamamen kesilsin mi?')) return;
+        fetch('{{ url_for("disconnect_cam") }}', {method:'POST', body:fd}).then(() => {
+          btn.dataset.off = '1'; btn.textContent = 'Baglan';
+          if(img) img.removeAttribute('src');     // akisi kapat
+          if(wrap) wrap.classList.add('disconnected');
+        });
+      }
     }
     function toggleFs(el){
       if(document.fullscreenElement === el){ document.exitFullscreen(); }
@@ -850,6 +1048,7 @@ def watch():
         WATCH_PAGE,
         names=LIVE.available_names(),
         zoom_default=bool(CONFIG.get("zoom_enabled", True)),
+        disconnected=LIVE.disconnected_names(),
     )
 
 
@@ -1059,6 +1258,28 @@ def zoom_toggle():
     return ("", 204)
 
 
+@app.route("/disconnect", methods=["POST"])
+@require_auth
+def disconnect_cam():
+    """Kamerayla baglantiyi TAMAMEN kes (sunucu tarafi; RTSP birakilir)."""
+    name = request.form.get("name")
+    if not name:
+        return ("isim gerekli", 400)
+    LIVE.disconnect(name)
+    return ("", 204)
+
+
+@app.route("/connect", methods=["POST"])
+@require_auth
+def connect_cam():
+    """Baglantisi kesilmiss kamerayi yeniden baglat."""
+    name = request.form.get("name")
+    if not name:
+        return ("isim gerekli", 400)
+    LIVE.reconnect(name)
+    return ("", 204)
+
+
 @app.route("/name", methods=["POST"])
 @require_auth
 def set_name():
@@ -1089,6 +1310,305 @@ def recent_image(eid):
     resp = Response(jpeg, mimetype="image/jpeg")
     resp.headers["Cache-Control"] = "no-cache"
     return resp
+
+
+@app.route("/counts.json")
+@require_auth
+def counts_json():
+    """Giris/cikis sayimi: giren/cikan/iceride + son olaylar. Kapaliysa bos."""
+    if COUNTING is None:
+        return jsonify({"enabled": False, "in": 0, "out": 0, "inside": 0,
+                        "entered": [], "exited": []})
+    data = COUNTING.counts()
+    data["enabled"] = True
+    return jsonify(data)
+
+
+@app.route("/counts/<int:eid>.jpg")
+@require_auth
+def counts_image(eid):
+    """Bir gecis olayinin kucuk resmi (bellekte)."""
+    jpeg = COUNTING.get_jpeg(eid) if COUNTING is not None else None
+    if jpeg is None:
+        abort(404)
+    resp = Response(jpeg, mimetype="image/jpeg")
+    resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
+@app.route("/counts/reset", methods=["POST"])
+@require_auth
+def counts_reset():
+    if COUNTING is not None:
+        COUNTING.reset()
+    return ("", 204)
+
+
+SAYIM_PAGE = """
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FaceZoom &mdash; Giris/Cikis Sayim</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, Arial, sans-serif; margin: 0;
+           background: #14161a; color: #e8e8e8; }
+    header { background: #1d2026; padding: 14px 20px; border-bottom: 1px solid #2a2e36; }
+    h1 { margin: 0; font-size: 18px; }
+    a { color: #6fa8ff; text-decoration: none; }
+    button { background: #2f6df0; border: 1px solid #2f6df0; color: #fff;
+             border-radius: 7px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 18px; }
+    .cards { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+    .card { flex: 1 1 200px; background: #1d2026; border: 1px solid #2a2e36;
+            border-radius: 12px; padding: 18px; text-align: center; }
+    .card .n { font-size: 44px; font-weight: 700; }
+    .card .l { font-size: 13px; color: #9aa0aa; margin-top: 4px; }
+    .card.gir .n { color: #6fcf97; }
+    .card.cik .n { color: #e7a96f; }
+    .card.ic  .n { color: #6fa8ff; }
+    .cols { display: flex; gap: 18px; flex-wrap: wrap; }
+    .col { flex: 1 1 360px; }
+    h2 { font-size: 15px; color: #cdd2da; margin: 0 0 10px; }
+    .lst { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
+    .it { display: flex; gap: 10px; align-items: center; background: #1d2026;
+          border: 1px solid #2a2e36; border-radius: 8px; padding: 6px 8px; }
+    .it img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px;
+              background: #0c0d10; flex: 0 0 auto; }
+    .it .nm { font-size: 14px; font-weight: 600; color: #e8e8e8; }
+    .it .meta { font-size: 12px; color: #9aa0aa; }
+    .off { color: #e79bb0; padding: 12px 0; }
+    .empty { color: #7d838d; font-size: 13px; padding: 10px 4px; }
+  </style>
+</head>
+<body>
+  <header><h1>FaceZoom &mdash; Giris/Cikis Sayim
+    <a href="{{ url_for('counting_setup') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#9999; Cizgi Ayari</a>
+    <a href="{{ url_for('watch') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#128250; Canli Izleme</a>
+    <a href="{{ url_for('settings') }}" style="font-size:13px;font-weight:400;margin-left:12px;">Kamera Ayarlari</a>
+  </h1></header>
+  <div class="wrap">
+    <div id="off" class="off" style="display:none;">
+      Sayim KAPALI. config.yaml'da <code>counting_enabled: true</code>, <code>counting_camera</code>
+      ve <code>counting_line</code> ayarlayin (bkz. tasarim dokumani).
+    </div>
+    <div class="cards">
+      <div class="card gir"><div class="n" id="c-gir">0</div><div class="l">Iceri giren</div></div>
+      <div class="card cik"><div class="n" id="c-cik">0</div><div class="l">Disari cikan</div></div>
+      <div class="card ic"><div class="n" id="c-ic">0</div><div class="l">Iceride (giren - cikan)</div></div>
+    </div>
+    <p><button onclick="resetCounts()">Sayaclari Sifirla</button></p>
+    <div class="cols">
+      <div class="col"><h2>&#9989; Son girenler</h2><div class="lst" id="lst-gir"></div></div>
+      <div class="col"><h2>&#128682; Son cikanlar</h2><div class="lst" id="lst-cik"></div></div>
+    </div>
+  </div>
+  <script>
+    function fmt(ts){ return ts ? new Date(ts*1000).toLocaleTimeString('tr-TR') : ''; }
+    function rows(list){
+      if(!list || !list.length) return '<div class="empty">Henuz kayit yok.</div>';
+      return list.map(function(it){
+        var nm = it.name || '-';
+        return '<div class="it"><img src="/counts/'+it.id+'.jpg" onerror="this.style.visibility=\\'hidden\\'">'
+          + '<div><div class="nm">'+nm+'</div>'
+          + '<div class="meta">'+(it.camera||'')+' &middot; '+fmt(it.ts)+'</div></div></div>';
+      }).join('');
+    }
+    function resetCounts(){
+      if(!confirm('Sayaclari sifirla?')) return;
+      fetch('{{ url_for("counts_reset") }}', {method:'POST'}).then(poll);
+    }
+    async function poll(){
+      try {
+        const r = await fetch('{{ url_for("counts_json") }}', {cache:'no-store'});
+        if(r.ok){
+          const d = await r.json();
+          document.getElementById('off').style.display = d.enabled ? 'none' : 'block';
+          document.getElementById('c-gir').textContent = d.in;
+          document.getElementById('c-cik').textContent = d.out;
+          document.getElementById('c-ic').textContent = d.inside;
+          document.getElementById('lst-gir').innerHTML = rows(d.entered);
+          document.getElementById('lst-cik').innerHTML = rows(d.exited);
+        }
+      } catch(e){ /* sessizce gec */ }
+      setTimeout(poll, 2000);
+    }
+    poll();
+  </script>
+</body>
+</html>
+"""
+
+
+@app.route("/sayim")
+@require_auth
+def sayim():
+    return render_template_string(SAYIM_PAGE)
+
+
+COUNTING_SETUP_PAGE = """
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FaceZoom &mdash; Sayim Cizgisi Ayari</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { font-family: system-ui, Arial, sans-serif; margin: 0;
+           background: #14161a; color: #e8e8e8; }
+    header { background: #1d2026; padding: 14px 20px; border-bottom: 1px solid #2a2e36; }
+    h1 { margin: 0; font-size: 18px; }
+    a { color: #6fa8ff; text-decoration: none; }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 18px; }
+    label { font-size: 13px; color: #9aa0aa; }
+    select, button { background: #23262e; color: #e8e8e8; border: 1px solid #3a3f4a;
+            border-radius: 6px; padding: 7px 10px; font-size: 14px; }
+    button.go { background: #2f6df0; border-color: #2f6df0; color: #fff; cursor: pointer; }
+    .stage { position: relative; display: inline-block; margin-top: 14px;
+             border: 1px solid #2a2e36; border-radius: 8px; overflow: hidden; max-width: 100%; }
+    .stage img { display: block; max-width: 100%; cursor: crosshair; }
+    .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .hint { font-size: 13px; color: #9aa0aa; margin: 10px 0; }
+    .msg { background: #163a26; border: 1px solid #2c6b46; color: #9be7bd;
+           padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <header><h1>FaceZoom &mdash; Sayim Cizgisi Ayari
+    <a href="{{ url_for('sayim') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#128202; Sayim</a>
+    <a href="{{ url_for('watch') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#128250; Canli Izleme</a>
+  </h1></header>
+  <div class="wrap">
+    {% if request.args.get('saved') %}<div class="msg">Kaydedildi. Uygulamak icin uygulamayi/container'i
+      yeniden baslatin (Docker: <code>docker compose restart</code>).</div>{% endif %}
+    {% if not names %}<p>Tanimli kamera yok. Once <a href="{{ url_for('settings') }}">kamera ekleyin</a>.</p>
+    {% else %}
+    <div class="row">
+      <label>Kamera:
+        <select id="cam" onchange="pickCam()">
+          {% for n in names %}<option value="{{ n }}" {{ 'selected' if n == cur_cam else '' }}>{{ n }}</option>{% endfor %}
+        </select>
+      </label>
+      <label><input type="checkbox" id="swap" {{ 'checked' if cur_swap else '' }} onchange="draw()"> Yonu ters cevir (yesil ok = GIRIS yonu)</label>
+      <label><input type="checkbox" id="enabled" {{ 'checked' if cur_enabled else '' }}> Sayimi etkinlestir</label>
+      <button class="go" onclick="save()">Kaydet</button>
+      <button onclick="clearLine()">Cizgiyi temizle</button>
+    </div>
+    <div class="hint">Goruntu uzerinde <b>iki nokta</b> tiklayarak sanal cizgiyi ciz.
+      Kisi bu cizgiyi gectiginde sayilir; yon yanlissa "Yonu ters cevir".</div>
+    <div class="stage" id="stage">
+      <img id="cam-img" alt="kamera">
+      <svg id="ov" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs>
+          <marker id="ah" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto">
+            <path d="M0,0 L5,2.5 L0,5 z" fill="#6fcf97"/>
+          </marker>
+        </defs>
+        <line id="ln" x1="0" y1="0" x2="0" y2="0" stroke="#2f6df0" stroke-width="0.8" style="display:none"/>
+        <line id="arw" x1="0" y1="0" x2="0" y2="0" stroke="#6fcf97" stroke-width="0.7"
+              marker-end="url(#ah)" style="display:none"/>
+        <text id="arwlbl" font-size="4" fill="#6fcf97" style="display:none">GIRIS</text>
+        <circle id="p1" r="1.2" fill="#6fcf97" style="display:none"/>
+        <circle id="p2" r="1.2" fill="#e7a96f" style="display:none"/>
+      </svg>
+    </div>
+    <script>
+      var pts = [];   // normalize noktalar [{x,y}, ...] (0..1)
+      var CUR = {{ cur_line | tojson }};
+      function pickCam(){
+        var n = document.getElementById('cam').value;
+        // Cizim tam kare uzerinde olsun diye o kameranin zoom'unu kapat
+        var fd = new FormData(); fd.append('name', n); fd.append('enabled', '0');
+        fetch('{{ url_for("zoom_toggle") }}', {method:'POST', body:fd});
+        document.getElementById('cam-img').src = '/live/' + encodeURIComponent(n) + '?t=' + Date.now();
+      }
+      function draw(){
+        var ln=document.getElementById('ln'), c1=document.getElementById('p1'), c2=document.getElementById('p2');
+        var arw=document.getElementById('arw'), lbl=document.getElementById('arwlbl');
+        if(pts[0]){ c1.setAttribute('cx',pts[0].x*100); c1.setAttribute('cy',pts[0].y*100); c1.style.display=''; } else c1.style.display='none';
+        if(pts[1]){ c2.setAttribute('cx',pts[1].x*100); c2.setAttribute('cy',pts[1].y*100); c2.style.display=''; } else c2.style.display='none';
+        if(pts[0]&&pts[1]){
+          ln.setAttribute('x1',pts[0].x*100); ln.setAttribute('y1',pts[0].y*100);
+          ln.setAttribute('x2',pts[1].x*100); ln.setAttribute('y2',pts[1].y*100); ln.style.display='';
+          // GIRIS yonu oku: cizgiye dik normal. swap ile ters cevrilir.
+          var dx=pts[1].x-pts[0].x, dy=pts[1].y-pts[0].y;
+          var L=Math.hypot(dx,dy)||1;
+          var nx=-dy/L, ny=dx/L;                        // +taraf normali (giris, swap=false)
+          if(document.getElementById('swap').checked){ nx=-nx; ny=-ny; }
+          var mx=(pts[0].x+pts[1].x)/2*100, my=(pts[0].y+pts[1].y)/2*100;
+          var ex=mx+nx*14, ey=my+ny*14;                 // ok ucu (~%14)
+          arw.setAttribute('x1',mx); arw.setAttribute('y1',my);
+          arw.setAttribute('x2',ex); arw.setAttribute('y2',ey); arw.style.display='';
+          lbl.setAttribute('x', ex + (nx>0?1:-6)); lbl.setAttribute('y', ey); lbl.style.display='';
+        } else { ln.style.display='none'; arw.style.display='none'; lbl.style.display='none'; }
+      }
+      function clearLine(){ pts=[]; draw(); }
+      document.getElementById('stage').addEventListener('click', function(e){
+        var img=document.getElementById('cam-img'); var r=img.getBoundingClientRect();
+        var x=(e.clientX-r.left)/r.width, y=(e.clientY-r.top)/r.height;
+        x=Math.min(1,Math.max(0,x)); y=Math.min(1,Math.max(0,y));
+        if(pts.length>=2) pts=[];
+        pts.push({x:x,y:y}); draw();
+      });
+      function save(){
+        if(pts.length<2){ alert('Lutfen iki nokta tiklayarak cizgiyi cizin.'); return; }
+        var fd=new FormData();
+        fd.append('camera', document.getElementById('cam').value);
+        fd.append('x1',pts[0].x); fd.append('y1',pts[0].y);
+        fd.append('x2',pts[1].x); fd.append('y2',pts[1].y);
+        fd.append('swap', document.getElementById('swap').checked?'1':'0');
+        fd.append('enabled', document.getElementById('enabled').checked?'1':'0');
+        fetch('{{ url_for("counting_setup_save") }}', {method:'POST', body:fd})
+          .then(()=>{ location.href='{{ url_for("counting_setup") }}?saved=1'; });
+      }
+      // baslangic: secili kamerayi yukle + kayitli cizgiyi goster
+      pickCam();
+      if(CUR && CUR.length===4){ pts=[{x:CUR[0],y:CUR[1]},{x:CUR[2],y:CUR[3]}]; draw(); }
+    </script>
+    {% endif %}
+  </div>
+</body>
+</html>
+"""
+
+
+@app.route("/counting-setup")
+@require_auth
+def counting_setup():
+    return render_template_string(
+        COUNTING_SETUP_PAGE,
+        names=LIVE.available_names(),
+        cur_cam=CONFIG.get("counting_camera", ""),
+        cur_line=list(CONFIG.get("counting_line", [0.0, 0.5, 1.0, 0.5])),
+        cur_swap=bool(CONFIG.get("counting_swap", False)),
+        cur_enabled=bool(CONFIG.get("counting_enabled", False)),
+    )
+
+
+@app.route("/counting-setup/save", methods=["POST"])
+@require_auth
+def counting_setup_save():
+    f = request.form
+    cam = (f.get("camera") or "").strip()
+    try:
+        line = [float(f.get("x1")), float(f.get("y1")),
+                float(f.get("x2")), float(f.get("y2"))]
+    except (TypeError, ValueError):
+        return ("gecersiz cizgi", 400)
+    line = [min(1.0, max(0.0, v)) for v in line]   # 0..1 kis
+    config_store.set_values({
+        "counting_enabled": f.get("enabled") == "1",
+        "counting_camera": cam,
+        "counting_line": line,
+        "counting_swap": f.get("swap") == "1",
+    })
+    log.info("Sayim ayari kaydedildi: kamera=%s cizgi=%s (yeniden baslatinca etkin)",
+             cam, line)
+    return ("", 204)
 
 
 @app.route("/healthz")
@@ -1123,6 +1643,13 @@ if __name__ == "__main__":
     # kameralar cift acilir. Bloke etmez, yalniz uyarir.
     import caplock
     caplock.acquire()
+    # Config'te kalan DUZ-METIN kamera parolalarini sifrele (tek sefer, acilista).
+    try:
+        n = config_store.encrypt_existing()
+        if n:
+            log.info("%d kamera parolasi sifrelendi (config.yaml guncellendi)", n)
+    except Exception:
+        log.exception("Parola sifreleme migrasyonu hatasi (devam ediliyor)")
     # Tanima pipeline thread'ini KAMERALARDAN ONCE baslat (import aninda degil;
     # boylece modul testte import edilince agir thread baslamaz).
     if RECOG_PIPE is not None:

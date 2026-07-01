@@ -33,9 +33,13 @@ class _PreviewWorker:
     hem yakalama yapar -> ayrica main.py calistirmaya gerek kalmaz.
     """
 
-    def __init__(self, camera, config, db=None, on_capture=None):
+    def __init__(self, camera, config, db=None, on_capture=None,
+                 line_counter=None, counting_store=None, name_provider=None):
         self.camera = camera
-        self.worker = CameraWorker(camera, config, db=db, on_capture=on_capture)
+        self.worker = CameraWorker(camera, config, db=db, on_capture=on_capture,
+                                   line_counter=line_counter,
+                                   counting_store=counting_store,
+                                   name_provider=name_provider)
         # Onizleme/isleme hizi (CPU): MJPEG icin ~12 fps yeterli, 25'e gerek yok.
         fps = max(1, int(config.get("preview_fps", 12)))
         self._frame_interval = 1.0 / fps
@@ -79,15 +83,25 @@ class _PreviewWorker:
 class LiveManager:
     """Kamera adina gore onizleme thread'lerini tembel (lazy) baslatir."""
 
-    def __init__(self, config, db=None, on_capture=None):
+    def __init__(self, config, db=None, on_capture=None,
+                 counting_camera=None, line_counter=None, counting_store=None,
+                 name_provider=None):
         self.config = config
         self.db = db                # verilirse worker'lar diske/DB yakalar
         self.on_capture = on_capture  # verilirse her yakalamada cagrilir (bellek deposu)
+        # GIRIS/CIKIS sayimi: yalniz bu ada sahip kameranin worker'i sayaca baglanir.
+        self.counting_camera = counting_camera
+        self.line_counter = line_counter
+        self.counting_store = counting_store
+        self.name_provider = name_provider   # gecis aninda yuz -> isim (opsiyonel)
         self._workers = {}          # name -> _PreviewWorker
         self._lock = threading.Lock()
         # None = config varsayilani; True/False = tum kameralar icin zorlanmiss
         # zoom durumu (sonradan baslayan worker'lar da bunu alir).
         self._zoom_override = None
+        # Elle "baglantisi kesilmiss" kameralar: ensure() bunlari OTOMATIK
+        # baslatmaz (RTSP tamamen kapali kalir) -> kullanici "Baglan" diyene kadar.
+        self._disconnected = set()
 
     def _camera_cfg(self, name):
         """Guncel config.yaml'dan ada gore kamera ayarini bul."""
@@ -104,6 +118,9 @@ class LiveManager:
         with self._lock:
             if name in self._workers:
                 return self._workers[name]
+            # Elle baglantisi kesildiyse OTOMATIK baslatma (kamera tamamen bos)
+            if name in self._disconnected:
+                return None
 
             cfg = self._camera_cfg(name)
             if cfg is None:
@@ -119,8 +136,15 @@ class LiveManager:
                     detect_source=cfg["detect_url"],
                     hires_source=cfg.get("hires_url"),
                 )
+            # Yalniz sayim kamerasina cizgi-gecis sayaci + depo + isim saglayici bagla
+            is_count_cam = (name == self.counting_camera)
+            lc = self.line_counter if is_count_cam else None
+            cs = self.counting_store if is_count_cam else None
+            npv = self.name_provider if is_count_cam else None
             pw = _PreviewWorker(cam, self.config, db=self.db,
-                                on_capture=self.on_capture).start()
+                                on_capture=self.on_capture,
+                                line_counter=lc, counting_store=cs,
+                                name_provider=npv).start()
             if self._zoom_override is not None:
                 pw.worker.set_zoom(self._zoom_override)   # global zoom durumunu uygula
             self._workers[name] = pw
@@ -173,6 +197,27 @@ class LiveManager:
             pw.stop()
             log.info("Kamera isleyici durduruldu: %s", name)
         return pw is not None
+
+    def disconnect(self, name):
+        """Kamerayla baglantiyi TAMAMEN kes: worker thread'i durdur, RTSP akisini
+        birak ve 'kesildi' isaretle ki ensure() onu otomatik baslatmasin."""
+        with self._lock:
+            self._disconnected.add(name)
+        return self.stop_camera(name)
+
+    def reconnect(self, name):
+        """'Kesildi' isaretini kaldir ve kamerayi yeniden baslat."""
+        with self._lock:
+            self._disconnected.discard(name)
+        return self.ensure(name) is not None
+
+    def is_disconnected(self, name):
+        with self._lock:
+            return name in self._disconnected
+
+    def disconnected_names(self):
+        with self._lock:
+            return set(self._disconnected)
 
     def stop_all(self):
         with self._lock:

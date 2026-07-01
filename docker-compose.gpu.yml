@@ -1,0 +1,24 @@
+# FaceZoom - GPU override
+# -----------------------------------------------------------------------------
+# CPU compose'un uzerine bindirilir; GPU imajini kurar ve NVIDIA GPU'yu rezerve eder.
+#
+# Kullanim:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# Gerekir: host'ta NVIDIA GPU + surucu + NVIDIA Container Toolkit.
+# Ayrica config.yaml'da  compute_device: gpu  olmali (YOLOX + insightface CUDA'ya gecsin).
+# GPU yoksa onnxruntime yine de CPU'ya duser (ama bu imaj CPU-only makinede gereksiz agirdir).
+# -----------------------------------------------------------------------------
+
+services:
+  facezoom:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

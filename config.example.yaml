@@ -11,6 +11,17 @@
 # Boylece parola hic dosyaya yazilmadan da calistirilabilir.
 # -----------------------------------------------------------------------------
 
+# ---- islem birimi (CPU/GPU) ----
+compute_device: cpu          # cpu | gpu  -> YOLOX + insightface icin onnxruntime saglayicisi
+                             # gpu: CUDA (yoksa CPU'ya duser). GPU icin onnxruntime-gpu + CUDA
+                             # gerekir -> Dockerfile.gpu + docker-compose.gpu.yml (bkz. DOCKER.md).
+
+# ---- islemci profili ----
+cpu_profile: normal          # normal | low  (low: dussuk-CPU ayarlarini topluca ezer)
+                             # Ayarlar ekranindan da secilebilir; low secilince asagidaki
+                             # detect_on_hires/preview_fps/detect_interval/output_size/
+                             # recognition_det_size/zoom_enabled degerleri gecersiz kalir.
+
 # ---- algilama / takip ----
 face_model: "models/blaze_face_full_range.tflite"  # full_range: uzak/egik yuzler icin
                                                     # (short_range: models/blaze_face_short_range.tflite)
@@ -42,6 +53,15 @@ person_min_size: 40                # px (detect uzayi); kucuk kisileri ele
 bytetrack_track_activation_threshold: 0.25
 bytetrack_lost_buffer: 30          # kac kare kayip track tutulsun
 bytetrack_min_matching_threshold: 0.8
+
+# ---- giris/cikis sayimi (cizgi-gecis, yon-bazli, RAM-ici) ----
+# Tek kamera, tek koridor (X-ray): sanal cizgiyi gecen kisiler sayilir.
+# En iyi sonuc icin detector_backend: yolox_person (govde tespiti) onerilir.
+counting_enabled: false            # acmak icin true
+counting_camera: ""                # sayim yapilacak kameranin ADI (config'teki bir kamera)
+counting_line: [0.0, 0.5, 1.0, 0.5] # NORMALIZE [x1,y1,x2,y2] (0..1); kare ortasinda yatay cizgi
+                                    # (en kolayi: /counting-setup ekranindan tikla-ciz)
+counting_swap: false               # giris/cikis yonu ters cikarsa true
 
 # ---- yuz tanima (insightface/ArcFace) - kimlik YALNIZ BELLEKTE, diske yazilmaz ----
 recognition_enabled: true        # ayni kisiyi konum/kamera bagimsiz embedding ile esle

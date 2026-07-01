@@ -86,7 +86,11 @@ class StreamReader:
         if self.is_webcam:
             cap = cv.VideoCapture(self.source)
         else:
-            cap = cv.VideoCapture(self.source, cv.CAP_FFMPEG)
+            # Parola config'te sifreli (enc$...) olabilir -> VideoCapture'a GERCEK
+            # URL verilir. Duz-metin URL'ler oldugu gibi gecer (geri uyum).
+            import secrets_util
+            src = secrets_util.decrypt_url_password(self.source)
+            cap = cv.VideoCapture(src, cv.CAP_FFMPEG)
             # Buffer'i kucuk tut (destekleyen backend'lerde) -> daha az gecikme
             try:
                 cap.set(cv.CAP_PROP_BUFFERSIZE, 1)

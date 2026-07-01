@@ -52,14 +52,22 @@ class CameraWorker:
     oldugundan bu donguyu bloke etmez.
     """
 
-    def __init__(self, camera, config, db=None, on_capture=None):
+    def __init__(self, camera, config, db=None, on_capture=None,
+                 line_counter=None, counting_store=None, name_provider=None):
         # db=None       -> yakalama DB'ye/diske yazilmaz
         # on_capture(...)-> her bitmiss gorunumde cagrilir (bellek deposu vb. icin)
         #   imza: on_capture(camera_name, crop_bgr, bbox, quality, first, last, best_t)
+        # line_counter/counting_store -> yalniz GIRIS/CIKIS sayim kamerasinda verilir;
+        #   None ise sayim YOK (diger kameralar etkilenmez).
         self.camera = camera
         self.config = config
         self.db = db
         self.on_capture = on_capture
+        self.line_counter = line_counter
+        self.counting_store = counting_store
+        # name_provider(face_crop_bgr) -> isim | None. Gecis aninda track'in yuzunu
+        # kimlige baglamak icin (webui: ArcFace + RECENT). Worker tanimaya bagli degil.
+        self.name_provider = name_provider
 
         self.tracker = FaceTracker(
             min_detection_confidence=config.get("detection_confidence", 0.6),
@@ -108,6 +116,10 @@ class CameraWorker:
         # Canli goruntuye dijital pan-zoom uygula (Center Stage). Kapaliysa tam
         # kare gosterilir (sag/sol zoom yok). Yakalama/best-shot bundan ETKILENMEZ.
         self.zoom_enabled = bool(config.get("zoom_enabled", True))
+        # Sayim kamerasinda zoom KAPALI tutulur: canli cikti tam kare olur, boylece
+        # normalize cizgi (UI'da cizilen) ile detect uzayi ayni cercevelemede kalir.
+        if self.line_counter is not None:
+            self.zoom_enabled = False
 
         self._frame_count = 0
         self._faces = []                 # son algilanan yuzler (detect koord.)
@@ -190,27 +202,36 @@ class CameraWorker:
             self._faces = faces
             frame_area = float(hw * hh)
 
+            tracks = []       # [(track_id, (x,y,w,h))] detect koord. (sayim icin)
+            tid_face = {}     # track_id -> face dict (sayim isim eslemesi icin)
             if self.backend == "yolox_person":
                 # 1) YOLOX kisi tespiti -> 2) ByteTrack track_id
                 persons = self._person_detector.detect(det_img)
                 person_tracks = self.manager.update(persons, now)
+                tracks = person_tracks
                 # 3) yuzleri iceren kisiye esle -> kisi track_id devralir
                 pairs = associate_faces_to_persons(faces, person_tracks)
                 dropped = len(faces) - len(pairs)
                 if dropped > 0:
                     log.debug("%d yuz iceren kisi kutusu bulunamadi (dusuruldu)", dropped)
                 for tid, face in pairs:
+                    tid_face[tid] = face
                     self._record_best(tid, face, sx, sy, hires_frame, frame_area, now)
             else:
                 # mediapipe: yuz bbox'lari dogrudan track edilir (mevcut davranis)
                 detect_bboxes = [f["bbox"] for f in faces]
                 assignments = self.manager.update(detect_bboxes, now)
+                tracks = assignments
                 bbox_to_face = {tuple(f["bbox"]): f for f in faces}
                 for tid, dbbox in assignments:
                     face = bbox_to_face.get(tuple(dbbox))
                     if face is None:
                         continue
+                    tid_face[tid] = face
                     self._record_best(tid, face, sx, sy, hires_frame, frame_area, now)
+
+            # --- GIRIS/CIKIS sayimi (yalniz sayim kamerasinda; backend-bagimsiz) --
+            self._run_counting(tracks, (dw, dh), tid_face, sx, sy, hires_frame, now)
 
         self._face_present = len(self._faces) > 0
 
@@ -244,6 +265,44 @@ class CameraWorker:
             self._draw_overlay(output, zoomed)
 
         return output
+
+    def _run_counting(self, tracks, dims, tid_face, sx, sy, hires_frame, now):
+        """Sayim kamerasinda track merkezlerini cizgi-gecis sayacina ver; gecen
+        kisi icin kucuk resim kirp, mumkunse yuzu kimlige (isim) bagla, depoya yaz.
+        Sayac yoksa hizlica doner. dims=(dw,dh) detect uzayi."""
+        if self.line_counter is None or self.counting_store is None:
+            return
+        self.counting_store.note(len(tracks))   # teshis: kac track goruldu
+        events = self.line_counter.update(tracks, dims)
+        if not events:
+            return
+        bbox_by_tid = dict(tracks)
+        for tid, direction in events:
+            jpeg = None
+            name = None
+            face = tid_face.get(tid)
+            # Once YUZ kirpintisi (varsa): hem kucuk resim hem isim eslemesi icin
+            fcrop = None
+            if face is not None:
+                fcrop = crop_with_margin(hires_frame, scale_bbox(face["bbox"], sx, sy), 0.3)
+            crop = fcrop
+            if crop is None:
+                # yuz yoksa govde kutusundan kucuk resim
+                dbbox = bbox_by_tid.get(tid)
+                if dbbox is not None:
+                    crop = crop_with_margin(hires_frame, scale_bbox(dbbox, sx, sy), 0.1)
+            if crop is not None:
+                ok, buf = cv.imencode(".jpg", crop, [cv.IMWRITE_JPEG_QUALITY, 80])
+                if ok:
+                    jpeg = buf.tobytes()
+            # Isim: yuz kirpintisini kimlige bagla (senkron; gecis seyrek -> ucuz)
+            if fcrop is not None and self.name_provider is not None:
+                try:
+                    name = self.name_provider(fcrop)
+                except Exception:
+                    log.exception("name_provider hatasi")
+            self.counting_store.record(direction, ts=now, name=name,
+                                       camera=self.camera.name, jpeg=jpeg)
 
     def _emit_capture(self, tr):
         """Bitmiss bir gorunumun en-net karesini DB'ye ve/veya callback'e ilet."""

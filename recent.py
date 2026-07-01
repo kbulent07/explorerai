@@ -181,6 +181,25 @@ class RecentFaceStore:
             e["name"] = name
             return True
 
+    def name_for_embedding(self, embedding):
+        """Verilen embedding'e en cok benzeyen (>= sim_threshold) ISIMLI kimligin
+        adini dondur. Giris/cikis olayini bir kisiye baglamak icin kullanilir.
+        Eslesme yoksa None."""
+        if embedding is None:
+            return None
+        with self._lock:
+            best = self.sim_threshold
+            name = None
+            for e in self._entries.values():
+                emb = e.get("emb")
+                if emb is None or not e.get("name"):
+                    continue
+                sim = float(np.dot(emb, embedding))
+                if sim >= best:
+                    best = sim
+                    name = e["name"]
+            return name
+
     def get_jpeg(self, eid):
         with self._lock:
             e = self._entries.get(int(eid))

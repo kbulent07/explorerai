@@ -18,3 +18,5 @@ waitress==3.0.2
 psutil==7.2.2
 # Kisi takibi (ByteTrack) - torch'suz; alt bagimliliklar (numpy/scipy vb.) supervision ile otomatik gelir
 supervision==0.29.1
+# Kamera parolalarini config'te sifreli tutmak icin (Fernet/AES)
+cryptography==49.0.0

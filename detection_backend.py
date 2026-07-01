@@ -119,10 +119,14 @@ def resolve_detection_config(config):
     if backend not in _VALID_BACKENDS:
         log.warning("Gecersiz detector_backend '%s' -> mediapipe", backend)
         backend = "mediapipe"
-    providers = config.get("yolox_providers") or ["CPUExecutionProvider"]
-    if not isinstance(providers, (list, tuple)) or not all(isinstance(p, str) for p in providers):
-        log.warning("Gecersiz yolox_providers -> ['CPUExecutionProvider']")
-        providers = ["CPUExecutionProvider"]
+    # Saglayici: yolox_providers acikca verilmisse onu kullan; yoksa compute_device'tan
+    # turet (cpu -> CPU; gpu -> CUDA+CPU). Tek 'compute_device' knob'u YOLOX ve
+    # insightface'i birlikte GPU'ya alir.
+    providers = config.get("yolox_providers")
+    if not (isinstance(providers, (list, tuple)) and providers
+            and all(isinstance(p, str) for p in providers)):
+        import perf
+        providers = perf.onnx_providers(config)
     return {
         "backend": backend,
         "yolox_model": str(config.get("yolox_model", "models/yolox_nano.onnx")),

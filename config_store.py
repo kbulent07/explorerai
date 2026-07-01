@@ -19,6 +19,8 @@ import urllib.parse
 
 from ruamel.yaml import YAML
 
+import secrets_util
+
 CONFIG_PATH = "config.yaml"
 
 _yaml = YAML()
@@ -67,6 +69,41 @@ def _save(data):
     # Yazimdan sonra onbellegi gecersiz kil -> sonraki okuma taze parse etsin.
     _cache["mtime"] = None
     _cache["data"] = None
+
+
+def encrypt_existing():
+    """Konfigdeki DUZ-METIN kamera parolalarini sifrele (varsa). Sifreleme devre
+    disiysa (anahtar/cryptography yok) hicbir sey yapmaz. Degissen alan sayisini
+    dondurur. Acilista bir kez cagrilir -> config'te artik duz parola kalmaz."""
+    if not secrets_util.encryption_available():
+        return 0
+    with _lock:
+        data = _load()
+        changed = 0
+        for cam in data.get("cameras", []) or []:
+            if not cam:
+                continue
+            for key in ("detect_url", "hires_url"):
+                url = cam.get(key)
+                if not url:
+                    continue
+                enc = secrets_util.encrypt_url_password(url)  # zaten sifreliyse no-op
+                if enc != url:
+                    cam[key] = enc
+                    changed += 1
+        if changed:
+            _save(data)
+    return changed
+
+
+def set_values(mapping):
+    """Ust-seviye ayar anahtarlarini guncelle/ekle (yorumlar/diger ayarlar
+    round-trip ile KORUNUR). Orn. counting_enabled/camera/line/swap."""
+    with _lock:
+        data = _load()
+        for k, v in (mapping or {}).items():
+            data[k] = v
+        _save(data)
 
 
 def _validate_host(ip):
@@ -133,9 +170,10 @@ def add_camera(name, detect_url, hires_url=None, role=None):
         raise ValueError("detect_url boss olamaz.")
     detect_url = _validate_url(detect_url, "detect_url")
 
-    cam = {"name": name, "detect_url": detect_url}
+    cam = {"name": name, "detect_url": secrets_util.encrypt_url_password(detect_url)}
     if hires_url and hires_url.strip():
-        cam["hires_url"] = _validate_url(hires_url, "hires_url")
+        cam["hires_url"] = secrets_util.encrypt_url_password(
+            _validate_url(hires_url, "hires_url"))
     role = _norm_role(role)
     if role:
         cam["role"] = role
@@ -199,10 +237,15 @@ def update_camera(index, name, detect_url, hires_url=None, role=None):
         if cam is None:
             cam = {}
             cams[index] = cam
+        # Parola maskeli ('****') geldiyse mevcut (sifreli) parolayi koru; yeni
+        # parola girildiyse sifrele. Boylece maskeli form parolayi bozmaz.
+        old_detect = cam.get("detect_url")
+        old_hires = cam.get("hires_url")
         cam["name"] = name
-        cam["detect_url"] = detect_url
+        cam["detect_url"] = secrets_util.merge_url_password(detect_url, old_detect)
         if hires_url and hires_url.strip():
-            cam["hires_url"] = _validate_url(hires_url, "hires_url")
+            cam["hires_url"] = secrets_util.merge_url_password(
+                _validate_url(hires_url, "hires_url"), old_hires)
         else:
             cam.pop("hires_url", None)   # bossaltilirsa tek akis moduna gec
         role = _norm_role(role)

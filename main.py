@@ -33,8 +33,9 @@ log = logging.getLogger("facezoom.main")
 
 
 def load_config(path="config.yaml"):
+    import perf
     with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        return perf.apply_cpu_profile(yaml.safe_load(f))
 
 
 def cleanup_loop(db, retention_days, interval_hours, stop_event):

@@ -1,6 +1,7 @@
 # Build baglamindan haric tutulanlar (imaj kucuk + build hizli kalsin).
 venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 
@@ -11,6 +12,10 @@ snapshots/
 
 # Gelistirme / arac dosyalari
 .claude/
+.agents/
+.superpowers/
+tests/
+docs/
 .git/
 .gitignore
 *.md
@@ -19,3 +24,4 @@ snapshots/
 Dockerfile
 .dockerignore
 docker-compose.yml
+.env

@@ -24,10 +24,13 @@ log = logging.getLogger("facezoom.recognition")
 class FaceRecognizer:
     """insightface FaceAnalysis sarmalayici (tembel yuklenir, thread-guvenli)."""
 
-    def __init__(self, model_name="buffalo_l", det_size=320, min_det_score=0.5):
+    def __init__(self, model_name="buffalo_l", det_size=320, min_det_score=0.5,
+                 providers=None):
         self.model_name = model_name
         self.det_size = det_size
         self.min_det_score = min_det_score   # bu skorun altindaki "yuz" reddedilir
+        # onnxruntime saglayicilari: GPU icin ["CUDAExecutionProvider","CPUExecutionProvider"]
+        self.providers = providers or ["CPUExecutionProvider"]
         self._app = None
         self._lock = threading.Lock()
 
@@ -38,16 +41,19 @@ class FaceRecognizer:
             if self._app is None:
                 # Gec import: insightface yoksa uygulama yine de calissin
                 from insightface.app import FaceAnalysis
-                log.info("insightface yukleniyor (%s)... ilk seferde model inebilir",
-                         self.model_name)
+                # CUDA saglayicisi varsa GPU cihazi (ctx_id=0), yoksa CPU (-1)
+                use_gpu = any("CUDA" in p for p in self.providers)
+                ctx_id = 0 if use_gpu else -1
+                log.info("insightface yukleniyor (%s, %s)... ilk seferde model inebilir",
+                         self.model_name, "GPU" if use_gpu else "CPU")
                 app = FaceAnalysis(
                     name=self.model_name,
                     allowed_modules=["detection", "recognition"],
-                    providers=["CPUExecutionProvider"],
+                    providers=self.providers,
                 )
-                app.prepare(ctx_id=-1, det_size=(self.det_size, self.det_size))
+                app.prepare(ctx_id=ctx_id, det_size=(self.det_size, self.det_size))
                 self._app = app
-                log.info("insightface hazir")
+                log.info("insightface hazir (%s)", "GPU" if use_gpu else "CPU")
         return self._app
 
     def embed(self, crop_bgr):

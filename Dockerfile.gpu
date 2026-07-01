@@ -1,0 +1,53 @@
+# FaceZoom - GPU (CUDA) imaji
+# -----------------------------------------------------------------------------
+# CPU imajindan farki: onnxruntime yerine onnxruntime-gpu + CUDA 12 / cuDNN 9
+# tabani. YOLOX ve insightface CUDA'da kosar (config: compute_device: gpu).
+#
+# GEREKSINIM (host): NVIDIA GPU + surucu + NVIDIA Container Toolkit.
+# Build+calistir:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build
+#
+# NOT: Bu imaj GPU'lu bir makinede dogrulanmalidir; burada (GPU yok) test edilmedi.
+# Ubuntu 24.04'te bazi kutuphane adlari 't64' ekli olabilir (asagida ayarli).
+# onnxruntime-gpu 1.27 -> CUDA 12.x + cuDNN 9.x ister; taban imaj buna gore secildi.
+# -----------------------------------------------------------------------------
+FROM nvidia/cuda:12.6.2-cudnn-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+# Python 3.12 (ubuntu24.04 varsayilani) + sistem bagimliliklari
+#  ffmpeg: RTSP decode | libgl1/libglib: opencv | libgomp1: onnxruntime
+#  build-essential/cmake: insightface derlemesi
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-dev \
+        ffmpeg libgl1 libglib2.0-0t64 libgomp1 build-essential cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+RUN pip install --no-cache-dir numpy Cython
+
+# CPU 'onnxruntime' satirini 'onnxruntime-gpu' ile degistir (tek kaynak requirements.txt)
+COPY requirements.txt .
+RUN sed 's/^onnxruntime==/onnxruntime-gpu==/' requirements.txt > requirements.gpu.txt \
+    && pip install --no-cache-dir -r requirements.gpu.txt
+
+# mediapipe Tasks API C bindings -> libEGL.so.1 / libGLESv2.so.2 (pip'ten sonra)
+RUN apt-get update && apt-get install -y --no-install-recommends libegl1 libgles2 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+
+# non-root (defense-in-depth); insightface modeli HOME altina iner
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p /home/appuser/.insightface \
+    && chown -R appuser:appuser /app /home/appuser
+ENV HOME=/home/appuser
+USER appuser
+
+EXPOSE 5000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+    CMD python3 -c "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=3).status==200 else 1)" || exit 1
+
+CMD ["python3", "webui.py"]

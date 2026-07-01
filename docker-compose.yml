@@ -12,6 +12,11 @@ services:
     container_name: facezoom
     ports:
       - "5000:5000"
+    environment:
+      # Kamera parolalarini config.yaml'da SIFRELI tutmak icin anahtar.
+      # Deger .env dosyasindan gelir (git'e KONMAZ). Bos ise parolalar duz metin
+      # kalir (arayuzde yine maskelenir). Anahtari KAYBETMEYIN (parolalar cozulemez).
+      FACEZOOM_SECRET_KEY: ${FACEZOOM_SECRET_KEY:-}
     volumes:
       # Ayarlar + /settings ekranindan eklenen/silinen kameralar kalici olsun.
       # NOT: container non-root (uid 1000) calisir; Linux'ta /settings'in
