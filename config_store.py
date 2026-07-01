@@ -106,6 +106,18 @@ def set_values(mapping):
         _save(data)
 
 
+def load_full():
+    """config.yaml'in TAMAMINI KILIT ALTINDA okuyup dondur (dict).
+
+    Cagiranlar (webui: profil/dedektor degissince config'i tazeler) ham
+    open()+parse yerine bunu kullanmali: _save ile ayni _lock paylasilir, boylece
+    bir yazim (truncate+write) SIRASINDA yarim-dosya okunup parse hatasi olmaz.
+    Ust-seviye dict; kameralar/quality_weights round-trip tiplerinde (dict/list
+    gibi davranir) -> .get()/[] erisimi sorunsuz."""
+    with _lock:
+        return dict(_load())
+
+
 def _validate_host(ip):
     """IP/hostname temel dogrulama (RTSP URL'sine ham gomulecek)."""
     ip = (ip or "").strip()

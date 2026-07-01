@@ -468,8 +468,9 @@ def set_detector_backend():
     if b not in ("mediapipe", "yolox_person"):
         b = "mediapipe"
     config_store.set_values({"detector_backend": b})
-    with open("config.yaml", "r", encoding="utf-8") as f:
-        CONFIG = perf.apply_cpu_profile(yaml.safe_load(f))
+    # Kilit altinda oku (config_store._save ile paylasilan kilit) -> yarim-dosya
+    # okumasi olmaz.
+    CONFIG = perf.apply_cpu_profile(config_store.load_full())
     LIVE.config = CONFIG
     LIVE.stop_all()
     LIVE.start_all()
@@ -539,9 +540,8 @@ def set_cpu_profile():
     if prof not in perf.VALID_PROFILES:
         prof = "normal"
     config_store.set_values({"cpu_profile": prof})
-    # config'i tazele + profili uygula + worker'lari yeniden baslat (canli etki)
-    with open("config.yaml", "r", encoding="utf-8") as f:
-        CONFIG = perf.apply_cpu_profile(yaml.safe_load(f))
+    # config'i tazele (kilit altinda) + profili uygula + worker'lari yeniden baslat
+    CONFIG = perf.apply_cpu_profile(config_store.load_full())
     LIVE.config = CONFIG
     LIVE.stop_all()
     LIVE.start_all()
