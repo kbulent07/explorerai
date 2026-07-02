@@ -66,3 +66,68 @@ def load_module(path, config, camera, services):
         log.warning("Modul setup hatasi: %s (atlaniyor)", path, exc_info=True)
         return None
     return inst
+
+
+class Pipeline:
+    """Modul zinciri. run(ctx): once tum process (analiz), sonra tum draw
+    (display), liste sirasiyla. Bir modul patlarsa yakalanir + throttled loglanir;
+    o kare icin o modul atlanir, zincir/canli akis kesilmez."""
+
+    def __init__(self, modules):
+        self.modules = list(modules)
+        self._err_counts = {}   # (id(modul), faz) -> hata sayaci (log throttle)
+
+    def _run_one(self, phase, fn, ctx):
+        try:
+            fn(ctx)
+        except Exception:
+            key = (id(fn.__self__), phase)
+            n = self._err_counts.get(key, 0) + 1
+            self._err_counts[key] = n
+            if n == 1 or n % 50 == 0:
+                log.warning("Modul %s.%s hatasi (#%d, kare atlaniyor)",
+                            type(fn.__self__).__name__, phase, n, exc_info=True)
+
+    def run(self, ctx):
+        for m in self.modules:
+            self._run_one("process", m.process, ctx)
+        for m in self.modules:
+            self._run_one("draw", m.draw, ctx)
+
+    def finalize(self):
+        for m in self.modules:
+            try:
+                m.finalize()
+            except Exception:
+                log.warning("Modul %s finalize hatasi", type(m).__name__,
+                            exc_info=True)
+
+
+# Varsayilan zincir: pipeline: tanimsizsa bugunku davranisi uretir.
+def _default_chain(config, is_counting):
+    chain = ["modules.recognition:RecognitionModule"]
+    if is_counting:
+        chain.append("modules.counting:CountingModule")
+    if config.get("zoom_enabled", True):
+        chain.append("modules.zoom:ZoomModule")
+    if config.get("debug_overlay", True):
+        chain.append("modules.overlay:OverlayModule")
+    return chain
+
+
+def build_pipeline(config, camera, services, *, is_counting=False,
+                   camera_pipeline=None):
+    """Modul zincirini kur. Oncelik: camera_pipeline (kamera-bazli) > config['pipeline']
+    (global) > varsayilan sentez. services: modullere setup ile verilecek singleton'lar."""
+    if camera_pipeline is not None:
+        paths = camera_pipeline
+    elif isinstance(config.get("pipeline"), (list, tuple)):
+        paths = list(config["pipeline"])
+    else:
+        paths = _default_chain(config, is_counting)
+    modules = []
+    for p in paths:
+        m = load_module(p, config, camera, services)
+        if m is not None:
+            modules.append(m)
+    return Pipeline(modules)
