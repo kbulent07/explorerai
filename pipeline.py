@@ -8,7 +8,7 @@
 import importlib
 import logging
 
-log = logging.getLogger("facezoom.pipeline")
+log = logging.getLogger("aieye.pipeline")
 
 
 class PipelineModule:
