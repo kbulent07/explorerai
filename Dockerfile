@@ -1,4 +1,4 @@
-# FaceZoom - Docker imaji
+# AiEye - Docker imaji
 # -----------------------------------------------------------------------------
 # Container YALNIZ webui.py'yi calistirir: canli izleme + bellek-ici yakalama
 # (DISKE/DB'ye yazmaz). main.py cv2 ile masaustu pencere actigi icin headless

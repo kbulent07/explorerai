@@ -1,1 +1,1 @@
-# FaceZoom islem hatti (pipeline) modulleri paketi.
+# AiEye islem hatti (pipeline) modulleri paketi.

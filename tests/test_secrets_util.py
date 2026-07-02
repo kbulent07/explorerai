@@ -12,13 +12,13 @@ def _reset():
 
 
 def _with_key():
-    os.environ["FACEZOOM_SECRET_KEY"] = "test-secret-key-123"
+    os.environ["AIEYE_SECRET_KEY"] = "test-secret-key-123"
     _reset()
 
 
 def _without_key():
-    os.environ.pop("FACEZOOM_SECRET_KEY", None)
-    os.environ.pop("FACEZOOM_KEY_FILE", None)
+    os.environ.pop("AIEYE_SECRET_KEY", None)
+    os.environ.pop("AIEYE_KEY_FILE", None)
     _reset()
 
 
@@ -91,7 +91,7 @@ def test_unresolved_anahtar_yokken_true():
     enc = s.encrypt_url_password("rtsp://admin:gizli@10.0.0.1:554/x")
     assert not s.password_encrypted_but_unresolved(enc)   # A'da cozulur
     # ...Bilgisayar B'ye .env tasinmadan git (anahtar YOK)
-    os.environ["FACEZOOM_SECRET_KEY"] = "test-secret-key-123"  # A'nin anahtari (kalsin)
+    os.environ["AIEYE_SECRET_KEY"] = "test-secret-key-123"  # A'nin anahtari (kalsin)
     _without_key()
     assert s.password_encrypted_but_unresolved(enc)        # B'de COZULEMEZ -> True
 
@@ -100,7 +100,7 @@ def test_unresolved_yanlis_anahtarla_true():
     _with_key()
     enc = s.encrypt_url_password("rtsp://admin:gizli@10.0.0.1:554/x")
     # Farkli anahtar (setup B'de yeni uretmis gibi)
-    os.environ["FACEZOOM_SECRET_KEY"] = "bambaska-bir-anahtar-999"
+    os.environ["AIEYE_SECRET_KEY"] = "bambaska-bir-anahtar-999"
     _reset()
     assert s.password_encrypted_but_unresolved(enc)        # yanlis anahtar -> True
 

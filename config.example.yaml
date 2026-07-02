@@ -1,4 +1,4 @@
-# FaceZoom yapilandirma SABLONU
+# AiEye yapilandirma SABLONU
 # -----------------------------------------------------------------------------
 # Bu dosyayi `config.yaml` olarak kopyalayip kendi degerlerinizi girin:
 #     cp config.example.yaml config.yaml      (Windows: copy config.example.yaml config.yaml)
@@ -7,7 +7,7 @@
 # ile surum kontrolu DISINDA tutulur. Bu sablon yer tutucularla versiyonlanir.
 #
 # Web kullanici/parolasi ortam degiskeniyle de verilebilir (config'i ezer):
-#     FACEZOOM_WEB_USERNAME, FACEZOOM_WEB_PASSWORD
+#     AIEYE_WEB_USERNAME, AIEYE_WEB_PASSWORD
 # Boylece parola hic dosyaya yazilmadan da calistirilabilir.
 # -----------------------------------------------------------------------------
 
@@ -108,7 +108,7 @@ quality_weights:
   confidence: 0.10          # algilama guveni
 
 # ---- veritabani / saklama ----
-db_path: "facezoom.db"
+db_path: "aieye.db"
 images_dir: "captures"
 retention_days: 30          # KVKK: bu sureden eski kayit + dosya silinsin
 cleanup_interval_hours: 6   # retention temizliginin calissma sikligi
@@ -123,7 +123,7 @@ web:
   host: "0.0.0.0"           # yalniz yerel ag; disari acmayin (TLS icin ters-proxy kullanin)
   port: 5000
   username: "admin"
-  password: "DEGISTIRIN"    # GUCLU bir parola girin (veya FACEZOOM_WEB_PASSWORD env)
+  password: "DEGISTIRIN"    # GUCLU bir parola girin (veya AIEYE_WEB_PASSWORD env)
   auth_enabled: true        # yerel guvenli agda false yapilabilir (auth kapanir)
   max_streams_per_camera: 8 # kamera basina eszamanli canli izleyici siniri (thread korumasi)
   threads: 64               # waitress worker thread sayisi

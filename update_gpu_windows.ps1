@@ -1,5 +1,5 @@
 # =============================================================================
-# FaceZoom - Windows GUNCELLEME scripti (GPU / NVIDIA-CUDA)
+# AiEye - Windows GUNCELLEME scripti (GPU / NVIDIA-CUDA)
 # -----------------------------------------------------------------------------
 # GPU kurulumu YAPILMIS varsayar: sadece EN GUNCEL kodu ceker, GPU imajini
 # yeniden derler ve baslatir. config.yaml / .env / modeller / veriler KORUNUR.
@@ -15,15 +15,15 @@ Set-Location -Path $PSScriptRoot
 $ErrorActionPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-function Info($m){ Write-Host "[FaceZoom] $m" -ForegroundColor Cyan }
+function Info($m){ Write-Host "[AiEye] $m" -ForegroundColor Cyan }
 function Ok($m){   Write-Host "[TAMAM]  $m" -ForegroundColor Green }
 function Warn($m){ Write-Host "[UYARI]  $m" -ForegroundColor Yellow }
 function Fail($m){ Write-Host "[HATA]   $m" -ForegroundColor Red }
 
-Write-Host "==== FaceZoom Windows Guncelleme (GPU) ====" -ForegroundColor White
+Write-Host "==== AiEye Windows Guncelleme (GPU) ====" -ForegroundColor White
 
 if (-not (Test-Path "docker-compose.gpu.yml")) {
-  Fail "docker-compose.gpu.yml bulunamadi. Bu scripti FaceZoom proje klasorunde calistirin."
+  Fail "docker-compose.gpu.yml bulunamadi. Bu scripti AiEye proje klasorunde calistirin."
   Read-Host "Cikmak icin Enter"; exit 1
 }
 
@@ -71,14 +71,14 @@ Info "Container sagligi bekleniyor..."
 $healthy = $false
 for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep -Seconds 3
-  $st = (docker inspect --format '{{.State.Health.Status}}' facezoom 2>$null)
+  $st = (docker inspect --format '{{.State.Health.Status}}' aieye 2>$null)
   if ($st -eq 'healthy') { $healthy = $true; break }
 }
-if ($healthy) { Ok "FaceZoom guncellendi ve calisiyor (healthy, GPU)." }
+if ($healthy) { Ok "AiEye guncellendi ve calisiyor (healthy, GPU)." }
 else { Warn "Saglik dogrulanamadi. Loglar: docker compose -f docker-compose.yml -f docker-compose.gpu.yml logs -f" }
 
 # --- 5) GPU kullanimi log ipucu ---
-$logs = docker logs facezoom 2>&1 | Select-String -Pattern "CUDA|GPU|CUDAExecutionProvider" | Select-Object -First 3
+$logs = docker logs aieye 2>&1 | Select-String -Pattern "CUDA|GPU|CUDAExecutionProvider" | Select-Object -First 3
 if ($logs) { $logs | ForEach-Object { Ok ("log: " + $_.ToString().Trim()) } }
 
 # --- 6) Erisim bilgisi ---

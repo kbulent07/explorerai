@@ -13,7 +13,7 @@ import os
 import cv2 as cv
 import numpy as np
 
-log = logging.getLogger("facezoom.detection")
+log = logging.getLogger("aieye.detection")
 
 
 def yolox_preproc(img_bgr, input_size, pad_value=114):

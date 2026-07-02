@@ -9,7 +9,7 @@ import cv2 as cv
 from pipeline import PipelineModule
 from worker import scale_bbox, crop_with_margin
 
-log = logging.getLogger("facezoom.modules.counting")
+log = logging.getLogger("aieye.modules.counting")
 
 
 class CountingModule(PipelineModule):

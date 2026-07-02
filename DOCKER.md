@@ -1,4 +1,4 @@
-# FaceZoom — Docker ile Çalıştırma
+# AiEye — Docker ile Çalıştırma
 
 Container, **headless** modda çalışır: yalnız `webui.py` (canlı izleme + bellek-içi
 yakalama). Masaüstü pencere (`main.py`) container'da kullanılmaz.
@@ -42,7 +42,7 @@ docker compose up -d --build
 - Container **non-root** (uid 1000) çalışır. Linux'ta `/settings`'in `config.yaml`'a
   yazabilmesi için host dosyası uid 1000'e yazılabilir olmalı (Docker Desktop
   Windows/Mac'te otomatik halledilir). Gerekirse `chmod 666 config.yaml`.
-- **Web parolası:** `config.yaml > web > password` yerine `FACEZOOM_WEB_PASSWORD`
+- **Web parolası:** `config.yaml > web > password` yerine `AIEYE_WEB_PASSWORD`
   ortam değişkeniyle verebilirsiniz (compose `environment:`). Parola boş **ve**
   `auth_enabled: true` ise tüm girişler reddedilir (kazara açık kalmasın diye).
 - **Sağlık kontrolü:** İmajda `HEALTHCHECK` tanımlı; kimlik gerektirmeyen `/healthz`

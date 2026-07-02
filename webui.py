@@ -43,15 +43,15 @@ with open("config.yaml", "r", encoding="utf-8") as f:
     CONFIG = perf.apply_cpu_profile(yaml.safe_load(f))
 
 WEB = CONFIG.get("web", {})
-log = logging.getLogger("facezoom.web")
+log = logging.getLogger("aieye.web")
 
 # Web kimlik bilgileri: ORTAM DEGISKENI config'i ezer. Boylece parola hic
 # dosyaya yazilmadan da verilebilir (config.yaml zaten .gitignore'da).
-_WEB_USER = os.environ.get("FACEZOOM_WEB_USERNAME") or WEB.get("username", "admin")
-_WEB_PASS = os.environ.get("FACEZOOM_WEB_PASSWORD") or WEB.get("password", "")
+_WEB_USER = os.environ.get("AIEYE_WEB_USERNAME") or WEB.get("username", "admin")
+_WEB_PASS = os.environ.get("AIEYE_WEB_PASSWORD") or WEB.get("password", "")
 if WEB.get("auth_enabled", True) and not _WEB_PASS:
     log.warning("Web parolasi BOS! config.yaml web.password ayarlayin veya "
-                "FACEZOOM_WEB_PASSWORD ortam degiskeni verin (auth_enabled=true).")
+                "AIEYE_WEB_PASSWORD ortam degiskeni verin (auth_enabled=true).")
 # Bellek butcesini RAM'e gore YAZILIM belirler: bostaki RAM'in bir orani,
 # alt/ust sinirla kirpilir. Sabit kisi sayisi yerine bayt-butcesi: kucuk yuzler
 # cok, buyuk yuzler az kayit tutar; RAM tassmaz. Dolunca en eski kayit dussar.
@@ -190,7 +190,7 @@ def require_auth(f):
                             auth.username, request.remote_addr)
             return Response(
                 "Giriss gerekli", 401,
-                {"WWW-Authenticate": 'Basic realm="FaceZoom"'},
+                {"WWW-Authenticate": 'Basic realm="AiEye"'},
             )
         return f(*args, **kwargs)
     return wrapper
@@ -209,7 +209,7 @@ SETTINGS_PAGE = """
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FaceZoom &mdash; Kamera Ayarlari</title>
+  <title>AiEye &mdash; Kamera Ayarlari</title>
   <style>
     :root { color-scheme: dark; }
     body { font-family: system-ui, Arial, sans-serif; margin: 0;
@@ -252,7 +252,7 @@ SETTINGS_PAGE = """
   </style>
 </head>
 <body>
-  <header><h1>FaceZoom &mdash; Kamera Ayarlari
+  <header><h1>AiEye &mdash; Kamera Ayarlari
     <a href="{{ url_for('watch') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#128250; Canli Izleme</a></h1>
   </header>
   <div class="wrap">
@@ -342,7 +342,7 @@ SETTINGS_PAGE = """
           hires : {{ (cam.get('hires_url') | maskurl) if cam.get('hires_url') else '(tek akis)' }}
           {% if idx in unresolved %}
           <br><span style="color:#e79bb0;font-weight:600;">&#9888; Parola cozulemiyor
-            (FACEZOOM_SECRET_KEY / .env eksik veya farkli). Kamera baglanamaz &mdash;
+            (AIEYE_SECRET_KEY / .env eksik veya farkli). Kamera baglanamaz &mdash;
             .env'i tasiyin ya da &laquo;Duzenle&raquo; ile parolayi yeniden girin.</span>
           {% endif %}
         </td>
@@ -654,7 +654,7 @@ WATCH_PAGE = """
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FaceZoom &mdash; Canli Izleme</title>
+  <title>AiEye &mdash; Canli Izleme</title>
   <style>
     :root { color-scheme: dark; }
     html, body { height: 100%; }
@@ -754,7 +754,7 @@ WATCH_PAGE = """
   </style>
 </head>
 <body>
-  <header><h1>FaceZoom &mdash; Canli Izleme
+  <header><h1>AiEye &mdash; Canli Izleme
     <a href="#" onclick="openPopup();return false;" style="font-size:13px;font-weight:400;margin-left:12px;">&#8599; Popup Pencere</a>
     <a href="{{ url_for('sayim') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#128202; Giris/Cikis Sayim</a>
     <a href="{{ url_for('settings') }}" style="font-size:13px;font-weight:400;margin-left:12px;">Kamera Ayarlari</a>
@@ -821,7 +821,7 @@ WATCH_PAGE = """
   <script>
     function openPopup(){
       // 400x300 ayri pencere: solda en son kisi (300x300), sagda son 5 (100x300)
-      window.open('{{ url_for("popup") }}', 'facezoom_popup',
+      window.open('{{ url_for("popup") }}', 'aieye_popup',
         'width=400,height=300,menubar=no,toolbar=no,location=no,status=no,resizable=yes');
     }
 
@@ -1140,7 +1140,7 @@ POPUP_PAGE = """
 <html lang="tr">
 <head>
   <meta charset="utf-8">
-  <title>FaceZoom &mdash; Popup</title>
+  <title>AiEye &mdash; Popup</title>
   <style>
     :root { color-scheme: dark; }
     html, body { margin: 0; padding: 0; width: 400px; height: 300px; overflow: hidden;
@@ -1433,7 +1433,7 @@ SAYIM_PAGE = """
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FaceZoom &mdash; Giris/Cikis Sayim</title>
+  <title>AiEye &mdash; Giris/Cikis Sayim</title>
   <style>
     :root { color-scheme: dark; }
     body { font-family: system-ui, Arial, sans-serif; margin: 0;
@@ -1476,7 +1476,7 @@ SAYIM_PAGE = """
   </style>
 </head>
 <body>
-  <header><h1>FaceZoom &mdash; Giris/Cikis Sayim
+  <header><h1>AiEye &mdash; Giris/Cikis Sayim
     <a href="{{ url_for('counting_setup') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#9999; Cizgi Ayari</a>
     <a href="{{ url_for('watch') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#128250; Canli Izleme</a>
     <a href="{{ url_for('settings') }}" style="font-size:13px;font-weight:400;margin-left:12px;">Kamera Ayarlari</a>
@@ -1569,7 +1569,7 @@ COUNTING_SETUP_PAGE = """
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>FaceZoom &mdash; Sayim Cizgisi Ayari</title>
+  <title>AiEye &mdash; Sayim Cizgisi Ayari</title>
   <style>
     :root { color-scheme: dark; }
     body { font-family: system-ui, Arial, sans-serif; margin: 0;
@@ -1593,7 +1593,7 @@ COUNTING_SETUP_PAGE = """
   </style>
 </head>
 <body>
-  <header><h1>FaceZoom &mdash; Sayim Cizgisi Ayari
+  <header><h1>AiEye &mdash; Sayim Cizgisi Ayari
     <a href="{{ url_for('sayim') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#128202; Sayim</a>
     <a href="{{ url_for('watch') }}" style="font-size:13px;font-weight:400;margin-left:12px;">&#128250; Canli Izleme</a>
   </h1></header>
@@ -1751,7 +1751,7 @@ if __name__ == "__main__":
     # MJPEG akislari uzun omurludur ve thread tutar; bol thread ayir ki canli
     # yayinlar galeri/poll isteklerini bloke etmesin.
     threads = int(WEB.get("threads", 64))
-    print(f"FaceZoom galeri:  http://{host}:{port}/  (kullanici: {_WEB_USER})")
+    print(f"AiEye galeri:  http://{host}:{port}/  (kullanici: {_WEB_USER})")
     print(f"Bellek butcesi (RAM'e gore): {_BUDGET // (1024*1024)} MB  "
           f"(~{_BUDGET // 30000} kisi tahmini)")
     # Tek-ornek nobeti: main.py de yakalama yapar; ayni anda ikisi calisirsa
@@ -1776,7 +1776,7 @@ if __name__ == "__main__":
         from waitress import serve
         print(f"waitress ile sunuluyor (threads={threads})")
         serve(app, host=host, port=port, threads=threads,
-              channel_timeout=300, ident="FaceZoom")
+              channel_timeout=300, ident="AiEye")
     except ImportError:
         print("waitress yok; werkzeug dev server'a dusuluyor")
         app.run(host=host, port=port, debug=False, threaded=True)

@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 import cv2 as cv
 
-log = logging.getLogger("facezoom.db")
+log = logging.getLogger("aieye.db")
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS captures (
@@ -44,7 +44,7 @@ def ts_to_iso(ts):
 class Database:
     """captures tablosu icin ince bir sarmalayici (thread-guvenli)."""
 
-    def __init__(self, db_path="facezoom.db", images_dir="captures"):
+    def __init__(self, db_path="aieye.db", images_dir="captures"):
         self.db_path = db_path
         self.images_dir = images_dir
         os.makedirs(self.images_dir, exist_ok=True)

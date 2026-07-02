@@ -1,10 +1,10 @@
 # =============================================================================
-# FaceZoom - Windows kurulum scripti (Docker) - HERSEY DAHIL
+# AiEye - Windows kurulum scripti (Docker) - HERSEY DAHIL
 # -----------------------------------------------------------------------------
 # Yaptiklari:
 #   1) Docker Desktop var mi + motor calisiyor mu (degilse baslatir, bekler)
 #   2) config.yaml yoksa sablondan olusturur
-#   3) .env sifreleme anahtarini (FACEZOOM_SECRET_KEY) uretir (kamera parolalari
+#   3) .env sifreleme anahtarini (AIEYE_SECRET_KEY) uretir (kamera parolalari
 #      config'te sifreli tutulur)
 #   4) YOLOX modelini indirir (giris/cikis sayimi icin, ~4 MB)
 #   5) docker compose ile imaji derler + baslatir
@@ -19,15 +19,15 @@ Set-Location -Path $PSScriptRoot
 $ErrorActionPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-function Info($m){ Write-Host "[FaceZoom] $m" -ForegroundColor Cyan }
+function Info($m){ Write-Host "[AiEye] $m" -ForegroundColor Cyan }
 function Ok($m){   Write-Host "[TAMAM]  $m" -ForegroundColor Green }
 function Warn($m){ Write-Host "[UYARI]  $m" -ForegroundColor Yellow }
 function Fail($m){ Write-Host "[HATA]   $m" -ForegroundColor Red }
 
-Write-Host "==== FaceZoom Windows Kurulumu ====" -ForegroundColor White
+Write-Host "==== AiEye Windows Kurulumu ====" -ForegroundColor White
 
 if (-not (Test-Path "docker-compose.yml")) {
-  Fail "docker-compose.yml bulunamadi. Bu scripti FaceZoom proje klasorunde calistirin."
+  Fail "docker-compose.yml bulunamadi. Bu scripti AiEye proje klasorunde calistirin."
   Read-Host "Cikmak icin Enter"; exit 1
 }
 
@@ -79,13 +79,13 @@ if (-not (Test-Path "config.yaml")) {
 }
 
 # --- 4) .env sifreleme anahtari (BOM'suz UTF-8) ---
-$hasKey = (Test-Path ".env") -and (Select-String -Path ".env" -Pattern "FACEZOOM_SECRET_KEY=." -Quiet)
+$hasKey = (Test-Path ".env") -and (Select-String -Path ".env" -Pattern "AIEYE_SECRET_KEY=." -Quiet)
 if (-not $hasKey) {
   $bytes = New-Object byte[] 32
   [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
   $key = [Convert]::ToBase64String($bytes).Replace('+','-').Replace('/','_')
   $enc = New-Object System.Text.UTF8Encoding($false)
-  [System.IO.File]::AppendAllText((Join-Path $PSScriptRoot ".env"), "FACEZOOM_SECRET_KEY=$key`n", $enc)
+  [System.IO.File]::AppendAllText((Join-Path $PSScriptRoot ".env"), "AIEYE_SECRET_KEY=$key`n", $enc)
   Ok "Sifreleme anahtari uretildi (.env)."
   Warn "-> .env dosyasini KAYBETMEYIN; baska PC'ye tasirken birlikte goturun (yoksa parolalar cozulemez)."
 } else {
@@ -121,10 +121,10 @@ Info "Container sagligi bekleniyor..."
 $healthy = $false
 for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep -Seconds 3
-  $st = (docker inspect --format '{{.State.Health.Status}}' facezoom 2>$null)
+  $st = (docker inspect --format '{{.State.Health.Status}}' aieye 2>$null)
   if ($st -eq 'healthy') { $healthy = $true; break }
 }
-if ($healthy) { Ok "FaceZoom calisiyor (healthy)." }
+if ($healthy) { Ok "AiEye calisiyor (healthy)." }
 else { Warn "Saglik dogrulanamadi. Loglara bakin:  docker compose logs -f" }
 
 # --- 8) Erisim bilgisi ---

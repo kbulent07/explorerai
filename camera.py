@@ -19,7 +19,7 @@ import time
 
 import cv2 as cv
 
-log = logging.getLogger("facezoom.camera")
+log = logging.getLogger("aieye.camera")
 
 # Hikvision UDP'de bozuk kare/paket kaybi yapabilir; TCP zorla.
 # stimeout (mikrosaniye): akis DONARSA (freeze / sessiz kopma) read() sonsuza
@@ -100,7 +100,7 @@ class StreamReader:
             # ve kimlik dogrulama basarisiz olur -> sebebi NET logla (aksi halde
             # yalniz "acilamadi" gorunur, kullanici parola/anahtar sorununu bilemez).
             if secrets_util.password_encrypted_but_unresolved(self.source):
-                log.error("[%s] RTSP parolasi COZULEMEDI: FACEZOOM_SECRET_KEY (.env) "
+                log.error("[%s] RTSP parolasi COZULEMEDI: AIEYE_SECRET_KEY (.env) "
                           "eksik veya farkli. Baska PC'ye tasirken .env dosyasini "
                           "BIRLIKTE getirin ya da kamerayi silip parolasiyla yeniden "
                           "ekleyin. Kamera baglanamayacak.", self.name)

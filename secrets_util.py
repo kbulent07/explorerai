@@ -4,8 +4,8 @@
 #
 # RTSP baglantisi GERCEK parolayi ister -> geri-donusturulebilir sifreleme
 # (Fernet/AES) kullaniriz; tek yonlu hash OLMAZ. Anahtar:
-#   1) FACEZOOM_SECRET_KEY ortam degiskeni (Docker'da onerilen), veya
-#   2) .facezoom.key dosyasi (yoksa uretilir; gitignore'lu, tasinabilir).
+#   1) AIEYE_SECRET_KEY ortam degiskeni (Docker'da onerilen), veya
+#   2) .aieye.key dosyasi (yoksa uretilir; gitignore'lu, tasinabilir).
 #
 # Sifreli parola URL icinde "enc$<token>" olarak gomulur:
 #   rtsp://admin:enc$gAAAA...@10.0.0.1:554/...
@@ -22,7 +22,7 @@ import logging
 import os
 import urllib.parse
 
-log = logging.getLogger("facezoom.secrets")
+log = logging.getLogger("aieye.secrets")
 
 _MARK = "enc$"
 _cache = {"loaded": False, "fernet": None}
@@ -55,11 +55,11 @@ def _fernet():
 
     # Anahtar YALNIZ ortam degiskeninden gelir (kullanici yonetir). Otomatik
     # keyfile URETILMEZ: aksi halde Docker restart'ta anahtar degisip parolalar
-    # cozulemez ve testlerde davranis sessizce degisirdi. Opsiyonel: FACEZOOM_KEY_FILE
+    # cozulemez ve testlerde davranis sessizce degisirdi. Opsiyonel: AIEYE_KEY_FILE
     # ile MEVCUT bir anahtar dosyasi gosterilebilir (uretmez, sadece okur).
-    secret = os.environ.get("FACEZOOM_SECRET_KEY")
+    secret = os.environ.get("AIEYE_SECRET_KEY")
     if not secret:
-        keyfile = os.environ.get("FACEZOOM_KEY_FILE")
+        keyfile = os.environ.get("AIEYE_KEY_FILE")
         if keyfile and os.path.exists(keyfile):
             try:
                 with open(keyfile, "r", encoding="utf-8") as f:
@@ -67,7 +67,7 @@ def _fernet():
             except OSError:
                 secret = None
     if not secret:
-        log.info("FACEZOOM_SECRET_KEY yok -> kamera parolalari DUZ METIN saklanir "
+        log.info("AIEYE_SECRET_KEY yok -> kamera parolalari DUZ METIN saklanir "
                  "(arayuzde maskelenir). Sifreleme icin bu ortam degiskenini verin.")
         _cache["fernet"] = None
         return None
@@ -168,7 +168,7 @@ def password_encrypted_but_unresolved(url):
 
     True doner -> kamera bu parolayla baglanamaz (enc$ string'i ham parola gibi
     gonderilir, kimlik dogrulama basarisiz). En sik sebep: config.yaml baska bir
-    PC'ye tasindi ama .env (FACEZOOM_SECRET_KEY) tasinmadi ya da setup yeni bir
+    PC'ye tasindi ama .env (AIEYE_SECRET_KEY) tasinmadi ya da setup yeni bir
     anahtar uretti. Cagiran (camera / web ayarlar) net uyari verebilir."""
     parts = _split_url(url)
     if not parts:

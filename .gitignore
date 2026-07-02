@@ -1,4 +1,4 @@
-# FaceZoom - surum kontrolune girmemesi gerekenler
+# AiEye - surum kontrolune girmemesi gerekenler
 # -----------------------------------------------------------------------------
 # ONEMLI: config.yaml gercek kamera kimlik bilgileri + web parolasi icerir.
 # Bu yuzden config.yaml versiyonlanmaz; sablon icin config.example.yaml kullanin.
@@ -20,6 +20,10 @@ __pycache__/
 # --- Yerel veri / biyometrik ciktilar (KVKK: depoda tutulmaz) ---
 captures/
 snapshots/
+aieye.db
+aieye.db-journal
+aieye.db-wal
+# Eski isim (rebrand oncesi kalinti dosyalar; yanlislikla tekrar eklenmesin)
 facezoom.db
 facezoom.db-journal
 facezoom.db-wal

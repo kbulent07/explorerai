@@ -16,7 +16,7 @@
 import logging
 import socket
 
-log = logging.getLogger("facezoom.caplock")
+log = logging.getLogger("aieye.caplock")
 
 # Surec boyunca acik tutulan nobet soketi (port mesgul kalsin diye).
 _guard_sock = None
@@ -34,7 +34,7 @@ def acquire(port=47632):
     except OSError:
         s.close()
         log.warning(
-            "Baska bir FaceZoom yakalama surecinin (main.py veya webui.py) zaten "
+            "Baska bir AiEye yakalama surecinin (main.py veya webui.py) zaten "
             "calistigi gorunuyor. Iki surec ayni kameralari ayni anda acarsa RTSP "
             "akislari kopabilir/baglanamayabilir. Yalniz BIRINI calistirin."
         )

@@ -1,4 +1,4 @@
-# FaceZoom
+# AiEye
 
 Sabit (PTZ olmayan) Hikvision RTSP kameralarda yüz algılayıp canlı **dijital
 zoom** (kırp + büyüt, Apple "Center Stage" benzeri yumuşak/titremesiz) yapan;
@@ -76,7 +76,7 @@ cp config.example.yaml config.yaml      # Windows: copy config.example.yaml conf
 ```
 
 Sonra `config.yaml`'da `web > password` değerini **güçlü bir parola** yapın (veya
-`FACEZOOM_WEB_PASSWORD` ortam değişkeniyle verin) ve kameralarınızı girin.
+`AIEYE_WEB_PASSWORD` ortam değişkeniyle verin) ve kameralarınızı girin.
 
 ### Yüz algılama modeli (zorunlu)
 
@@ -191,7 +191,7 @@ Tüm ayarlar [`config.yaml`](config.yaml) içindedir. Öne çıkanlar:
 | `webcam_test_index` | `0` verilirse RTSP yerine webcam (test) |
 | `show_windows` | Canlı zoom pencereleri |
 | `debug_overlay` | FPS + yüz durumu + kamera adı overlay |
-| `web.username` / `web.password` | Web erişim bilgileri (env `FACEZOOM_WEB_USERNAME`/`FACEZOOM_WEB_PASSWORD` **ezer**) |
+| `web.username` / `web.password` | Web erişim bilgileri (env `AIEYE_WEB_USERNAME`/`AIEYE_WEB_PASSWORD` **ezer**) |
 | `web.auth_enabled` | `false` → parola kapalı (yalnız güvenli yerel ağ) |
 | `web.max_streams_per_camera` | Kamera başına eşzamanlı canlı izleyici sınırı (vars. 8; thread koruması) |
 | `web.threads` | waitress worker thread sayısı (vars. 64) |
@@ -227,7 +227,7 @@ zaman damgasına göre (en yeni üstte) grid olarak listelenir; **tarih aralığ
 `web:`) ile korunur.
 
 > Galeri yalnızca **yerel ağ** içindir; internete açmayın. Varsayılan parolayı
-> mutlaka değiştirin (`config.yaml > web > password` veya `FACEZOOM_WEB_PASSWORD`).
+> mutlaka değiştirin (`config.yaml > web > password` veya `AIEYE_WEB_PASSWORD`).
 > HTTP Basic **düz metindir**; güvensiz ağda TLS için ters-proxy (nginx/Caddy)
 > arkasına koyun. Parola **boş** ve `auth_enabled: true` ise tüm girişler reddedilir.
 > Sağlık kontrolü: kimliksiz `GET /healthz` (Docker healthcheck kullanır).

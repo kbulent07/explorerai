@@ -24,7 +24,7 @@ from tracking import (FaceTrackerManager, PersonTrackManager,
                       associate_faces_to_persons, compute_quality)
 from detection_backend import resolve_detection_config, build_person_detector
 
-log = logging.getLogger("facezoom.worker")
+log = logging.getLogger("aieye.worker")
 
 
 class _NameResolver:

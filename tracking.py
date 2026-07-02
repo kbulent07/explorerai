@@ -15,7 +15,7 @@ import logging
 import cv2 as cv
 import numpy as np
 
-log = logging.getLogger("facezoom.tracking")
+log = logging.getLogger("aieye.tracking")
 
 
 # ---- kalite (best-shot) skorlamasi -----------------------------------------
