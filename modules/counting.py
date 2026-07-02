@@ -50,6 +50,13 @@ class CountingModule(PipelineModule):
                 ok, buf = cv.imencode(".jpg", crop, [cv.IMWRITE_JPEG_QUALITY, 80])
                 if ok:
                     jpeg = buf.tobytes()
+            # Rapor katmanina blackboard olayi (ReportingModule tuketir).
+            # Isim asenkron cozulur -> ilk raporda None gider (YAGNI, spec §2).
+            ctx.setdefault("events", []).append({
+                "type": "counting_crossing", "camera": ctx.get("camera"),
+                "ts": now, "direction": "in" if direction == "giris" else "out",
+                "name": None, "jpeg": jpeg,
+            })
             eid = self.counting_store.record(direction, ts=now, name=None,
                                              camera=ctx.get("camera"), jpeg=jpeg)
             if eid is not None and fcrop is not None and self.name_resolver is not None:

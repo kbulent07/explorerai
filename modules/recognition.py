@@ -12,8 +12,17 @@ class RecognitionModule(PipelineModule):
         self.on_capture = services.get("on_capture")
 
     def process(self, ctx):
+        finished = ctx.get("finished") or []
+        for tr in finished:
+            # Rapor katmanina blackboard olayi (ReportingModule tuketir);
+            # on_capture olmasa da uretilir (CLI'da da rapor calissin).
+            ctx.setdefault("events", []).append({
+                "type": "capture_finished", "camera": ctx.get("camera"),
+                "ts": ctx.get("now"), "crop": tr.best_crop,
+                "bbox": tr.best_bbox, "quality": tr.best_score,
+            })
         if self.on_capture is None:
             return
-        for tr in ctx.get("finished") or []:
+        for tr in finished:
             self.on_capture(ctx.get("camera"), tr.best_crop, tr.best_bbox,
                             tr.best_score, tr.first_seen, tr.last_seen, tr.best_time)

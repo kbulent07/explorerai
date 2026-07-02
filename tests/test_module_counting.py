@@ -32,3 +32,23 @@ def test_counting_sayac_yoksa_noop():
     m.setup({}, "Kam", {"line_counter": None, "counting_store": None,
                         "name_resolver": None, "manager": _FakeMgr()})
     m.process(_ctx([(1, (90, 140, 20, 20))]))   # patlamamali
+
+
+def test_counting_event_uretir():
+    lc = LineCrossingCounter(line=(0.0, 0.5, 1.0, 0.5))
+    store = CountingStore()
+    m = CountingModule()
+    m.setup({}, "Kam", {"line_counter": lc, "counting_store": store,
+                        "name_resolver": None, "manager": _FakeMgr()})
+    c1 = _ctx([(1, (90, 40, 20, 20))])
+    m.process(c1)
+    assert not c1.get("events")            # gecis yok -> event yok
+    c2 = _ctx([(1, (90, 140, 20, 20))])
+    m.process(c2)
+    evs = c2.get("events") or []
+    assert len(evs) == 1
+    ev = evs[0]
+    assert ev["type"] == "counting_crossing"
+    assert ev["camera"] == "Kam"
+    assert ev["direction"] in ("in", "out")
+    assert ev["name"] is None
