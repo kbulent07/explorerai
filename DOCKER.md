@@ -56,6 +56,10 @@ docker compose up -d --build
   Desktop'ta host ağı sınırlıdır, bridge kullanın.)
 
 ## Notlar
+- **İşlem hattı (pipeline):** Kamera analiz/çıktı aşamaları (tanıma, sayım, zoom,
+  overlay) `config.yaml > pipeline` ile modül listesi olarak yeniden sıralanabilir.
+  Tanımsızsa varsayılan (mevcut) davranış üretilir. Yeni modül = `modules/` altında
+  yeni dosya + listeye bir satır. Algılama çekirdeği (tespit/takip/best-shot) sabittir.
 - `config.yaml > web > host: "0.0.0.0"` olmalı (container içinden dışarı yayın için).
 - İmaj insightface derlemesi nedeniyle büyüktür; ilk build internet erişimi ister.
 - CPU yükü yüksekse `config.yaml`'daki `preview_fps`, `detect_interval`,

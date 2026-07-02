@@ -19,7 +19,7 @@ from collections import deque
 
 import cv2 as cv
 
-from framing import FaceTracker, FrameTransformer
+from framing import FaceTracker
 from tracking import (FaceTrackerManager, PersonTrackManager,
                       associate_faces_to_persons, compute_quality)
 from detection_backend import resolve_detection_config, build_person_detector
@@ -153,8 +153,6 @@ class CameraWorker:
         # GENISLIGINE oranli (cozunurluk degisince tutarli kalir). process()
         # icinde dw belli olunca her karede guncellenir.
         self._center_dist_factor = float(config.get("track_center_dist_factor", 0.2))
-        # FrameTransformer ilk hires kare gelince (boyut belli olunca) kurulur
-        self.transformer = None
 
         self.weights = config.get("quality_weights", {})
         self.min_face_size = config.get("min_face_size", 40)
@@ -187,16 +185,28 @@ class CameraWorker:
         self._diag = {"cycles": 0, "faces": 0, "paired": 0, "emitted": 0}
         self._diag_t = time.time()
 
-    def _ensure_transformer(self, fw, fh):
-        if self.transformer is None:
-            self.transformer = FrameTransformer(
-                fw, fh,
-                zoom_factor=self.config.get("zoom_factor", 2.5),
-                smoothing=self.config.get("smoothing", 0.15),
-                hold_seconds=self.config.get("hold_seconds", 1.5),
-            )
-        elif (self.transformer.frame_width, self.transformer.frame_height) != (fw, fh):
-            self.transformer.update_size(fw, fh)
+        # Track/yuz durumu kareler arasi korunur (detect atlanan karelerde de
+        # ctx dolu kalsin; ZoomModule/CountingModule son bilinen degeri gorur).
+        self._tracks = []      # [(track_id, (x,y,w,h))] detect koord.
+        self._tid_face = {}    # track_id -> face dict
+
+        # --- config-driven islem hatti (analiz/cikti asamalari) ---
+        # Moduller cekirdegin doldurdugu ctx'i isler/cizer. Servisler setup ile verilir.
+        import pipeline as _pipeline_mod
+        services = {
+            "on_capture": self.on_capture,
+            "line_counter": self.line_counter,
+            "counting_store": self.counting_store,
+            "name_resolver": self._name_resolver,
+            "manager": self.manager,
+        }
+        cam_pipe = config.get("pipeline") if isinstance(config.get("pipeline"),
+                                                        (list, tuple)) else None
+        self._pipeline = _pipeline_mod.build_pipeline(
+            config, camera.name, services,
+            is_counting=(self.line_counter is not None),
+            camera_pipeline=cam_pipe,
+        )
 
     def _record_best(self, tid, face, sx, sy, hires_frame, frame_area, now):
         """Bir yuz icin hires kirpinti + kalite skorunu hesaplayip manager'a yaz."""
@@ -246,7 +256,6 @@ class CameraWorker:
         if self.backend == "mediapipe":
             self.manager.max_center_dist = max(1.0, self._center_dist_factor * dw)
 
-        self._ensure_transformer(hw, hh)
         self._frame_count += 1
 
         # --- algilama (her detect_interval karede bir, yeni kare geldiyse) ----
@@ -263,13 +272,13 @@ class CameraWorker:
             self._diag["cycles"] += 1
             self._diag["faces"] += len(faces)
 
-            tracks = []       # [(track_id, (x,y,w,h))] detect koord. (sayim icin)
-            tid_face = {}     # track_id -> face dict (sayim isim eslemesi icin)
+            self._tracks = []       # [(track_id, (x,y,w,h))] detect koord.
+            self._tid_face = {}     # track_id -> face dict (sayim isim eslemesi icin)
             if self.backend == "yolox_person":
                 # 1) YOLOX kisi tespiti -> 2) ByteTrack track_id
                 persons = self._person_detector.detect(det_img)
                 person_tracks = self.manager.update(persons, now)
-                tracks = person_tracks
+                self._tracks = person_tracks
                 # 3) yuzleri iceren kisiye esle -> kisi track_id devralir
                 pairs = associate_faces_to_persons(faces, person_tracks)
                 dropped = len(faces) - len(pairs)
@@ -277,30 +286,33 @@ class CameraWorker:
                     log.debug("%d yuz iceren kisi kutusu bulunamadi (dusuruldu)", dropped)
                 self._diag["paired"] += len(pairs)
                 for tid, face in pairs:
-                    tid_face[tid] = face
+                    self._tid_face[tid] = face
                     self._record_best(tid, face, sx, sy, hires_frame, frame_area, now)
             else:
                 # mediapipe: yuz bbox'lari dogrudan track edilir (mevcut davranis)
                 detect_bboxes = [f["bbox"] for f in faces]
                 assignments = self.manager.update(detect_bboxes, now)
-                tracks = assignments
+                self._tracks = assignments
                 bbox_to_face = {tuple(f["bbox"]): f for f in faces}
                 for tid, dbbox in assignments:
                     face = bbox_to_face.get(tuple(dbbox))
                     if face is None:
                         continue
-                    tid_face[tid] = face
+                    self._tid_face[tid] = face
                     self._record_best(tid, face, sx, sy, hires_frame, frame_area, now)
-
-            # --- GIRIS/CIKIS sayimi (yalniz sayim kamerasinda; backend-bagimsiz) --
-            self._run_counting(tracks, (dw, dh), tid_face, sx, sy, hires_frame, now)
+            # NOT: giris/cikis sayimi artik CountingModule'de (islem hatti).
 
         self._face_present = len(self._faces) > 0
 
-        # --- bitmiss gorunumleri isle (DB ve/veya bellek deposu) -------------
+        # --- bitmiss gorunumler: DB'ye (CLI) core yazar; RECENT (web) modulde --
+        # on_capture -> RECENT yolu RecognitionModule'e tasindi (ctx["finished"]).
         finished = self.manager.collect_finished(now)
-        for tr in finished:
-            self._emit_capture(tr)
+        if self.db is not None:
+            for tr in finished:
+                self.db.save_capture(
+                    camera_name=self.camera.name, crop_bgr=tr.best_crop,
+                    quality_score=tr.best_score, first_seen=tr.first_seen,
+                    last_seen=tr.last_seen, best_time=tr.best_time)
         self._diag["emitted"] += len(finished)
 
         # --- yakalama teshisi (periyodik) -> yuzler nerede kayboluyor? -------
@@ -319,18 +331,27 @@ class CameraWorker:
             self._diag = {"cycles": 0, "faces": 0, "paired": 0, "emitted": 0}
             self._diag_t = now
 
-        # --- canli zoom (en buyuk = en yakin yuze odaklan) -------------------
-        # zoom_enabled False -> tam kareyi oldugu gibi goster (pan/zoom yok).
-        if self.zoom_enabled:
-            target_hbbox = None
-            if self._faces:
-                largest = max(self._faces, key=lambda f: f["bbox"][2] * f["bbox"][3])
-                target_hbbox = scale_bbox(largest["bbox"], sx, sy)
-            output, zoomed = self.transformer.transform(hires_frame, target_hbbox, now=now)
-        else:
-            output, zoomed = hires_frame, False
+        # --- FPS (ctx'e verilir; OverlayModule kullanir) ---
+        dt = now - self._fps_t
+        if dt > 0:
+            self._fps = 0.9 * self._fps + 0.1 * (1.0 / dt)
+        self._fps_t = now
 
-        # cikti boyutuna olcekle (biçimsiz output_size -> guvenli varsayilan)
+        # --- ctx doldur + config-driven islem hatti (analiz + display) -------
+        ctx = {
+            "camera": self.camera.name, "now": now,
+            "detect_frame": det_source, "detect_dims": (dw, dh),
+            "hires_frame": hires_frame, "hires_dims": (hw, hh),
+            "scale": (sx, sy), "faces": self._faces,
+            "tracks": self._tracks, "tid_face": self._tid_face, "finished": finished,
+            "run_detect": run_detect, "output": hires_frame,
+            "fps": self._fps, "face_present": self._face_present,
+            "connected": self.camera.connected, "zoomed": False,
+        }
+        self._pipeline.run(ctx)
+        output = ctx["output"]
+
+        # cikti boyutuna olcekle (bicimsiz output_size -> guvenli varsayilan)
         osz = self.config.get("output_size", [1280, 720])
         if not (isinstance(osz, (list, tuple)) and len(osz) == 2):
             osz = [1280, 720]
@@ -338,57 +359,7 @@ class CameraWorker:
         if (output.shape[1], output.shape[0]) != (out_w, out_h):
             output = cv.resize(output, (out_w, out_h), interpolation=cv.INTER_LINEAR)
 
-        # --- FPS ---
-        dt = now - self._fps_t
-        if dt > 0:
-            self._fps = 0.9 * self._fps + 0.1 * (1.0 / dt)
-        self._fps_t = now
-
-        if self.config.get("debug_overlay", True):
-            self._draw_overlay(output, zoomed)
-
         return output
-
-    def _run_counting(self, tracks, dims, tid_face, sx, sy, hires_frame, now):
-        """Sayim kamerasinda track merkezlerini cizgi-gecis sayacina ver; gecen
-        kisi icin kucuk resim kirp, mumkunse yuzu kimlige (isim) bagla, depoya yaz.
-        Sayac yoksa hizlica doner. dims=(dw,dh) detect uzayi."""
-        if self.line_counter is None or self.counting_store is None:
-            return
-        self.counting_store.note(len(tracks))   # teshis: kac track goruldu
-        events = self.line_counter.update(tracks, dims)
-        if not events:
-            return
-        bbox_by_tid = dict(tracks)
-        for tid, direction in events:
-            jpeg = None
-            name = None
-            # ISIM icin: track boyunca yakalanan EN IYI yuz kirpintisini kullan
-            # (o karedeki yuz degil). Yan-yana/acisi-kacan kisi bir an bile yuzunu
-            # gostermisse best_crop onu tutar -> isim eslemesi cok daha saglam.
-            tr = self.manager.tracks.get(tid)
-            fcrop = getattr(tr, "best_crop", None) if tr is not None else None
-            if fcrop is None:
-                face = tid_face.get(tid)   # en iyi yuz yoksa bu karedeki yuze dus
-                if face is not None:
-                    fcrop = crop_with_margin(hires_frame, scale_bbox(face["bbox"], sx, sy), 0.3)
-            crop = fcrop
-            if crop is None:
-                # yuz hic yoksa govde kutusundan kucuk resim
-                dbbox = bbox_by_tid.get(tid)
-                if dbbox is not None:
-                    crop = crop_with_margin(hires_frame, scale_bbox(dbbox, sx, sy), 0.1)
-            if crop is not None:
-                ok, buf = cv.imencode(".jpg", crop, [cv.IMWRITE_JPEG_QUALITY, 80])
-                if ok:
-                    jpeg = buf.tobytes()
-            # Olayi ONCE isimsiz kaydet (canliligi bloke etme). Isim cozumu
-            # (ArcFace embed) AGIR -> ayri thread'de coz, cozulunce olayin adini
-            # set_name ile guncelle. (name burada None; asenkron doldurulur.)
-            eid = self.counting_store.record(direction, ts=now, name=name,
-                                             camera=self.camera.name, jpeg=jpeg)
-            if eid is not None and fcrop is not None and self._name_resolver is not None:
-                self._name_resolver.submit(eid, fcrop, self.camera.name, now)
 
     def _emit_capture(self, tr):
         """Bitmiss bir gorunumun en-net karesini DB'ye ve/veya callback'e ilet."""
@@ -408,20 +379,13 @@ class CameraWorker:
             except Exception:
                 log.exception("on_capture callback hatasi")
 
-    def _draw_overlay(self, frame, zoomed):
-        status = "YUZ VAR" if self._face_present else "yuz yok"
-        color = (0, 220, 0) if self._face_present else (0, 165, 255)
-        conn = "" if self.camera.connected else "  [BAGLANTI YOK]"
-        text = f"{self.camera.name}  FPS:{self._fps:4.1f}  {status}{conn}"
-        cv.rectangle(frame, (0, 0), (frame.shape[1], 28), (0, 0, 0), -1)
-        cv.putText(frame, text, (8, 20), cv.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-        if zoomed:
-            cv.putText(frame, "ZOOM", (frame.shape[1] - 90, 20),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 220, 0), 2)
-
     def set_zoom(self, enabled):
-        """Canli dijital pan-zoom'u ac/kapat (calissirken degissir)."""
+        """Canli dijital pan-zoom'u ac/kapat (calissirken degissir).
+        Islem hattindaki ZoomModule'e delege eder (varsa)."""
         self.zoom_enabled = bool(enabled)
+        for m in self._pipeline.modules:
+            if type(m).__name__ == "ZoomModule" and hasattr(m, "set_enabled"):
+                m.set_enabled(enabled)
 
     def finalize(self):
         """Kapanissta aktif gorunumleri kaydet ve kaynaklari birak."""
@@ -430,4 +394,5 @@ class CameraWorker:
             self._emit_capture(tr)
         if self._name_resolver is not None:
             self._name_resolver.stop()
+        self._pipeline.finalize()
         self.tracker.close()
