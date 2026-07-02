@@ -1,5 +1,5 @@
 # =============================================================================
-# FaceZoom - Windows GUNCELLEME scripti (CPU)
+# AiEye - Windows GUNCELLEME scripti (CPU)
 # -----------------------------------------------------------------------------
 # Kuruludur varsayar: sadece EN GUNCEL kodu ceker, imaji yeniden derler ve
 # baslatir. config.yaml / .env / modeller / veriler KORUNUR (dokunulmaz).
@@ -15,15 +15,15 @@ Set-Location -Path $PSScriptRoot
 $ErrorActionPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-function Info($m){ Write-Host "[FaceZoom] $m" -ForegroundColor Cyan }
+function Info($m){ Write-Host "[AiEye] $m" -ForegroundColor Cyan }
 function Ok($m){   Write-Host "[TAMAM]  $m" -ForegroundColor Green }
 function Warn($m){ Write-Host "[UYARI]  $m" -ForegroundColor Yellow }
 function Fail($m){ Write-Host "[HATA]   $m" -ForegroundColor Red }
 
-Write-Host "==== FaceZoom Windows Guncelleme (CPU) ====" -ForegroundColor White
+Write-Host "==== AiEye Windows Guncelleme (CPU) ====" -ForegroundColor White
 
 if (-not (Test-Path "docker-compose.yml")) {
-  Fail "docker-compose.yml bulunamadi. Bu scripti FaceZoom proje klasorunde calistirin."
+  Fail "docker-compose.yml bulunamadi. Bu scripti AiEye proje klasorunde calistirin."
   Read-Host "Cikmak icin Enter"; exit 1
 }
 
@@ -70,10 +70,10 @@ Info "Container sagligi bekleniyor..."
 $healthy = $false
 for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep -Seconds 3
-  $st = (docker inspect --format '{{.State.Health.Status}}' facezoom 2>$null)
+  $st = (docker inspect --format '{{.State.Health.Status}}' aieye 2>$null)
   if ($st -eq 'healthy') { $healthy = $true; break }
 }
-if ($healthy) { Ok "FaceZoom guncellendi ve calisiyor (healthy)." }
+if ($healthy) { Ok "AiEye guncellendi ve calisiyor (healthy)." }
 else { Warn "Saglik dogrulanamadi. Loglara bakin:  docker compose logs -f" }
 
 # --- 5) Erisim bilgisi ---

@@ -1,5 +1,5 @@
 # =============================================================================
-# FaceZoom - Windows GPU (NVIDIA/CUDA) kurulum scripti (Docker) - HERSEY DAHIL
+# AiEye - Windows GPU (NVIDIA/CUDA) kurulum scripti (Docker) - HERSEY DAHIL
 # -----------------------------------------------------------------------------
 # CPU'lu setup.ps1'ten FARKI:
 #   - NVIDIA GPU + surucu var mi diye bakar (nvidia-smi)
@@ -25,7 +25,7 @@ Set-Location -Path $PSScriptRoot
 $ErrorActionPreference = 'Continue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-function Info($m){ Write-Host "[FaceZoom] $m" -ForegroundColor Cyan }
+function Info($m){ Write-Host "[AiEye] $m" -ForegroundColor Cyan }
 function Ok($m){   Write-Host "[TAMAM]  $m" -ForegroundColor Green }
 function Warn($m){ Write-Host "[UYARI]  $m" -ForegroundColor Yellow }
 function Fail($m){ Write-Host "[HATA]   $m" -ForegroundColor Red }
@@ -45,10 +45,10 @@ function Set-YamlScalar($file, $key, $value) {
   [System.IO.File]::WriteAllLines((Join-Path $PSScriptRoot $file), $out, $enc)
 }
 
-Write-Host "==== FaceZoom Windows GPU Kurulumu ====" -ForegroundColor White
+Write-Host "==== AiEye Windows GPU Kurulumu ====" -ForegroundColor White
 
 if (-not (Test-Path "docker-compose.gpu.yml")) {
-  Fail "docker-compose.gpu.yml bulunamadi. Bu scripti FaceZoom proje klasorunde calistirin."
+  Fail "docker-compose.gpu.yml bulunamadi. Bu scripti AiEye proje klasorunde calistirin."
   Read-Host "Cikmak icin Enter"; exit 1
 }
 
@@ -134,13 +134,13 @@ if ($ansM -match '^[Ee]') {
 }
 
 # --- 6) .env sifreleme anahtari (BOM'suz UTF-8) ---
-$hasKey = (Test-Path ".env") -and (Select-String -Path ".env" -Pattern "FACEZOOM_SECRET_KEY=." -Quiet)
+$hasKey = (Test-Path ".env") -and (Select-String -Path ".env" -Pattern "AIEYE_SECRET_KEY=." -Quiet)
 if (-not $hasKey) {
   $bytes = New-Object byte[] 32
   [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
   $key = [Convert]::ToBase64String($bytes).Replace('+','-').Replace('/','_')
   $enc = New-Object System.Text.UTF8Encoding($false)
-  [System.IO.File]::AppendAllText((Join-Path $PSScriptRoot ".env"), "FACEZOOM_SECRET_KEY=$key`n", $enc)
+  [System.IO.File]::AppendAllText((Join-Path $PSScriptRoot ".env"), "AIEYE_SECRET_KEY=$key`n", $enc)
   Ok "Sifreleme anahtari uretildi (.env)."
   Warn "-> .env dosyasini KAYBETMEYIN; baska PC'ye tasirken birlikte goturun (yoksa parolalar cozulemez)."
 } else {
@@ -178,15 +178,15 @@ Info "Container sagligi bekleniyor..."
 $healthy = $false
 for ($i = 0; $i -lt 40; $i++) {
   Start-Sleep -Seconds 3
-  $st = (docker inspect --format '{{.State.Health.Status}}' facezoom 2>$null)
+  $st = (docker inspect --format '{{.State.Health.Status}}' aieye 2>$null)
   if ($st -eq 'healthy') { $healthy = $true; break }
 }
-if ($healthy) { Ok "FaceZoom calisiyor (healthy, GPU)." }
+if ($healthy) { Ok "AiEye calisiyor (healthy, GPU)." }
 else { Warn "Saglik dogrulanamadi. Loglara bakin:  docker compose -f docker-compose.yml -f docker-compose.gpu.yml logs -f" }
 
 # --- 10) GPU gercekten kullaniliyor mu? (log ipucu) ---
 Info "GPU kullanimi loglardan dogrulaniyor..."
-$logs = docker logs facezoom 2>&1 | Select-String -Pattern "CUDA|GPU|CUDAExecutionProvider" | Select-Object -First 3
+$logs = docker logs aieye 2>&1 | Select-String -Pattern "CUDA|GPU|CUDAExecutionProvider" | Select-Object -First 3
 if ($logs) { $logs | ForEach-Object { Ok ("log: " + $_.ToString().Trim()) } }
 else { Warn "Loglarda CUDA/GPU izi gorulmedi; ilk yuz gorulunce (insightface yuklenince) tekrar bakin." }
 

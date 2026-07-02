@@ -7,7 +7,7 @@ __pycache__/
 
 # Yerel veri / ciktilar (container kendi volume'lerini kullanir)
 captures/
-facezoom.db
+aieye.db
 snapshots/
 
 # Gelistirme / arac dosyalari

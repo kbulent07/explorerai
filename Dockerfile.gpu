@@ -1,4 +1,4 @@
-# FaceZoom - GPU (CUDA) imaji
+# AiEye - GPU (CUDA) imaji
 # -----------------------------------------------------------------------------
 # CPU imajindan farki: onnxruntime yerine onnxruntime-gpu + CUDA 12 / cuDNN 9
 # tabani. YOLOX ve insightface CUDA'da kosar (config: compute_device: gpu).

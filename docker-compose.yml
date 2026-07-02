@@ -1,4 +1,4 @@
-# FaceZoom - Docker Compose
+# AiEye - Docker Compose
 # -----------------------------------------------------------------------------
 # RTSP kameralara baglanti (DISARI dogru) bridge agda da calisir; web arayuzu
 # 5000 portundan yayinlanir. Linux'ta isterseniz host agi icin asagidaki
@@ -6,17 +6,17 @@
 # -----------------------------------------------------------------------------
 
 services:
-  facezoom:
+  aieye:
     build: .
-    image: facezoom:latest
-    container_name: facezoom
+    image: aieye:latest
+    container_name: aieye
     ports:
       - "5000:5000"
     environment:
       # Kamera parolalarini config.yaml'da SIFRELI tutmak icin anahtar.
       # Deger .env dosyasindan gelir (git'e KONMAZ). Bos ise parolalar duz metin
       # kalir (arayuzde yine maskelenir). Anahtari KAYBETMEYIN (parolalar cozulemez).
-      FACEZOOM_SECRET_KEY: ${FACEZOOM_SECRET_KEY:-}
+      AIEYE_SECRET_KEY: ${AIEYE_SECRET_KEY:-}
     volumes:
       # Ayarlar + /settings ekranindan eklenen/silinen kameralar kalici olsun.
       # NOT: container non-root (uid 1000) calisir; Linux'ta /settings'in

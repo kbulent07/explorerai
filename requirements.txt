@@ -1,4 +1,4 @@
-# FaceZoom bagimliliklari - SABITLENMIS surumler
+# AiEye bagimliliklari - SABITLENMIS surumler
 # -----------------------------------------------------------------------------
 # Bu surumler Python 3.12 ile DOGRULANMIS calisan ortamdan (pip freeze) alindi.
 # mediapipe/numpy/insightface/onnxruntime zinciri surume cok duyarlidir; bu

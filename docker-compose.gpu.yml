@@ -1,4 +1,4 @@
-# FaceZoom - GPU override
+# AiEye - GPU override
 # -----------------------------------------------------------------------------
 # CPU compose'un uzerine bindirilir; GPU imajini kurar ve NVIDIA GPU'yu rezerve eder.
 #
@@ -11,7 +11,7 @@
 # -----------------------------------------------------------------------------
 
 services:
-  facezoom:
+  aieye:
     build:
       context: .
       dockerfile: Dockerfile.gpu

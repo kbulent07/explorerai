@@ -1,6 +1,6 @@
 # main.py
 # -----------------------------------------------------------------------------
-# FaceZoom - giriss noktasi.
+# AiEye - giriss noktasi.
 #
 # Coklu Hikvision RTSP kamerayi acar, dussuk cozunurluklu (sub) akista yuz algilar,
 # yuksek cozunurluklu (main) akista o yuze Center Stage benzeri yumuscak DIJITAL
@@ -29,7 +29,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
-log = logging.getLogger("facezoom.main")
+log = logging.getLogger("aieye.main")
 
 
 def load_config(path="config.yaml"):
@@ -58,7 +58,7 @@ def main():
     caplock.acquire()
 
     db = Database(
-        db_path=config.get("db_path", "facezoom.db"),
+        db_path=config.get("db_path", "aieye.db"),
         images_dir=config.get("images_dir", "captures"),
     )
 

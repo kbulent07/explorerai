@@ -18,7 +18,7 @@ from collections import deque
 
 import cv2 as cv
 
-log = logging.getLogger("facezoom.recognition")
+log = logging.getLogger("aieye.recognition")
 
 
 class FaceRecognizer:

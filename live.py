@@ -22,7 +22,7 @@ import config_store
 from camera import Camera
 from worker import CameraWorker
 
-log = logging.getLogger("facezoom.live")
+log = logging.getLogger("aieye.live")
 
 
 class _PreviewWorker:

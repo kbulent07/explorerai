@@ -24,7 +24,7 @@
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 # -----------------------------------------------------------------------------
 #
-# Uyarlamalar (FaceZoom):
+# Uyarlamalar (AiEye):
 #   - FaceTracker artik bbox yaninda guven skoru ve MediaPipe landmark
 #     (goz/burun/agiz) anahtar noktalarini da dondurur -> best-shot skorlamasi
 #     ve frontallik olcumu icin gerekli.
@@ -139,7 +139,7 @@ class FrameTransformer:
 
     StageCam'in EMA (ustel hareketli ortalama) yumuscatma fikri korunmustur:
     merkez ve zoom her karede hedefe dogru "smoothing" oraninda yaklasir, boylece
-    kamera ani ziplamaz. FaceZoom'da:
+    kamera ani ziplamaz. AiEye'da:
 
       - Yuz VARKEN  : hedef merkez = secili yuz merkezi, hedef zoom = zoom_factor.
       - Yuz YOKKEN  : hold_seconds boyunca son konumu korur; sonra hedef zoom 1.0
