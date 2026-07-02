@@ -108,20 +108,65 @@ class ReportManager:
         return self
 
     def _sender_loop(self):
-        # Task 2'de dolduruluyor; simdilik bos dongu (stop calissin)
         while not self._stop_ev.is_set():
-            self._stop_ev.wait(0.2)
+            with self._lock:
+                item = self._queue[0] if self._queue else None
+            if item is None:
+                self._stop_ev.wait(0.2)
+                continue
+            if self._post(item):
+                with self._lock:
+                    if self._queue and self._queue[0] is item:
+                        self._queue.popleft()
+            else:
+                self._snapshot()             # cevrimdisi: birikeni diske yaz
+                self._stop_ev.wait(RETRY_DELAY)
+
+    def _post(self, payload):
+        try:
+            req = urllib.request.Request(
+                self.gateway + "/AiInput",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json",
+                         "X-API-KEY": self.api_key},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+                return 200 <= resp.status < 300
+        except Exception as e:
+            log.warning("Rapor gonderilemedi (%s): %s", self.gateway, e)
+            return False
 
     def _snapshot(self):
-        pass   # Task 2
+        try:
+            with self._lock:
+                items = list(self._queue)
+            with open(self.queue_path, "w", encoding="utf-8") as f:
+                json.dump(items, f)
+        except OSError:
+            log.warning("Rapor kuyrugu diske yazilamadi: %s", self.queue_path)
 
     def _load_snapshot(self):
-        pass   # Task 2
+        if not os.path.exists(self.queue_path):
+            return
+        try:
+            with open(self.queue_path, "r", encoding="utf-8") as f:
+                items = json.load(f)
+            self._queue.extend(items)
+            os.remove(self.queue_path)
+            log.info("Bekleyen %d rapor diskten yuklendi", len(items))
+        except (OSError, ValueError):
+            log.warning("Rapor kuyrugu dosyasi okunamadi: %s", self.queue_path)
 
     def stop(self):
+        """Kapanis: thread'i durdur, bekleyen raporlari diske yaz (kayip olmasin)."""
         self._stop_ev.set()
         if self._thread is not None:
             self._thread.join(timeout=RETRY_DELAY + 1.0)
+        with self._lock:
+            has_items = bool(self._queue)
+        if has_items:
+            self._snapshot()
 
 
 def build_report_manager(config):

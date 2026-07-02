@@ -1,4 +1,7 @@
+import base64
+import json
 import time
+from datetime import datetime, timezone
 
 import secrets_util
 import reporting
@@ -77,3 +80,76 @@ def test_resolve_reporting_kamera_oncelikli():
     assert m["events"] == ["a"]
     assert m["cooldown_seconds"] == 60
     assert resolve_reporting(cfg, None)["branch_id"] == "G"
+
+
+class _Resp:
+    status = 200
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+
+
+def test_post_dogru_istek_kurar(tmp_path, monkeypatch):
+    seen = {}
+    def fake_urlopen(req, timeout=None):
+        seen["url"] = req.full_url
+        seen["key"] = req.get_header("X-api-key")
+        seen["body"] = json.loads(req.data.decode("utf-8"))
+        seen["timeout"] = timeout
+        return _Resp()
+    monkeypatch.setattr(reporting.urllib.request, "urlopen", fake_urlopen)
+    rm = _rm(tmp_path)
+    rm.send({"type": "counting_crossing", "camera": "Kam", "ts": 1000.0,
+             "direction": "in", "jpeg": b"JJ"})
+    assert rm._post(rm._queue[0]) is True
+    assert seen["url"] == "http://gw/AiInput"
+    assert seen["key"] == "KEY"
+    b = seen["body"]
+    assert b["eventType"] == "counting_crossing"
+    assert b["direction"] == "in"
+    assert b["branchId"] == "S1"
+    assert b["triggeredAt"] == datetime.fromtimestamp(
+        1000.0, tz=timezone.utc).isoformat()
+    assert base64.b64decode(b["image"]) == b"JJ"
+
+
+def test_post_hata_false(tmp_path, monkeypatch):
+    def fail(req, timeout=None):
+        raise OSError("baglanti yok")
+    monkeypatch.setattr(reporting.urllib.request, "urlopen", fail)
+    rm = _rm(tmp_path)
+    rm.send({"type": "t", "camera": "K", "ts": 1.0})
+    assert rm._post(rm._queue[0]) is False
+
+
+def test_offline_snapshot_ve_reload(tmp_path):
+    rm = _rm(tmp_path, cooldown_seconds=0)
+    rm.send({"type": "t", "camera": "K1", "ts": 1.0})
+    rm.send({"type": "t", "camera": "K2", "ts": 2.0})
+    rm._snapshot()
+    qp = tmp_path / "q.json"
+    assert qp.exists()
+    rm2 = _rm(tmp_path)     # ayni queue_path -> yukler + dosyayi siler
+    assert [p["camera"] for p in rm2._queue] == ["K1", "K2"]
+    assert not qp.exists()
+
+
+def test_sender_loop_gonderir_ve_bosaltir(tmp_path, monkeypatch):
+    monkeypatch.setattr(reporting.urllib.request, "urlopen",
+                        lambda req, timeout=None: _Resp())
+    rm = _rm(tmp_path, cooldown_seconds=0)
+    rm.send({"type": "t", "camera": "K", "ts": 1.0})
+    rm.start()
+    deadline = time.time() + 3.0
+    while rm._queue and time.time() < deadline:
+        time.sleep(0.05)
+    rm.stop()
+    assert not rm._queue
+
+
+def test_stop_bekleyenleri_diske_yazar(tmp_path):
+    rm = _rm(tmp_path, cooldown_seconds=0)
+    rm.send({"type": "t", "camera": "K", "ts": 1.0})
+    rm.stop()                 # thread baslamadi ama kuyruk dolu -> snapshot
+    assert (tmp_path / "q.json").exists()
