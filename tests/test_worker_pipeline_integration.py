@@ -56,6 +56,11 @@ def test_report_manager_service_ve_modul(monkeypatch):
     cfg = {"detector_backend": "mediapipe", "zoom_enabled": False,
            "debug_overlay": False, "output_size": [160, 120],
            "detect_interval": 1, "reporting": {"enabled": True}}
-    w = W.CameraWorker(_Cam(), cfg, report_manager=_RM())
+    rm = _RM()
+    w = W.CameraWorker(_Cam(), cfg, report_manager=rm)
     names = [type(m).__name__ for m in w._pipeline.modules]
     assert "ReportingModule" in names
+    # servis gercekten module ulasti mi (yalniz zincir uyeligi yeterli degil)
+    rep_mod = next(m for m in w._pipeline.modules
+                   if type(m).__name__ == "ReportingModule")
+    assert rep_mod.rm is rm
