@@ -1,6 +1,4 @@
 # tests/test_pipeline_build_run.py
-import pytest
-
 import pipeline
 
 
@@ -41,7 +39,6 @@ def test_run_modul_hatasi_zinciri_kesmez():
     assert "rec.process" in ctx["order"]   # good yine calisti
 
 
-@pytest.mark.skip(reason="modules Task 3-6'da eklenecek; Task 6 sonrasi acilir")
 def test_build_varsayilan_zincir_sentezi():
     cfg = {"zoom_enabled": True, "debug_overlay": False}
     p = pipeline.build_pipeline(cfg, "Kam", {}, is_counting=True)
