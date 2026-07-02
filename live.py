@@ -34,12 +34,14 @@ class _PreviewWorker:
     """
 
     def __init__(self, camera, config, db=None, on_capture=None,
-                 line_counter=None, counting_store=None, name_provider=None):
+                 line_counter=None, counting_store=None, name_provider=None,
+                 report_manager=None):
         self.camera = camera
         self.worker = CameraWorker(camera, config, db=db, on_capture=on_capture,
                                    line_counter=line_counter,
                                    counting_store=counting_store,
-                                   name_provider=name_provider)
+                                   name_provider=name_provider,
+                                   report_manager=report_manager)
         # Onizleme/isleme hizi (CPU): MJPEG icin ~12 fps yeterli, 25'e gerek yok.
         fps = max(1, int(config.get("preview_fps", 12)))
         self._frame_interval = 1.0 / fps
@@ -97,7 +99,7 @@ class LiveManager:
 
     def __init__(self, config, db=None, on_capture=None,
                  counting_camera=None, line_counter=None, counting_store=None,
-                 name_provider=None):
+                 name_provider=None, report_manager=None):
         self.config = config
         self.db = db                # verilirse worker'lar diske/DB yakalar
         self.on_capture = on_capture  # verilirse her yakalamada cagrilir (bellek deposu)
@@ -106,6 +108,7 @@ class LiveManager:
         self.line_counter = line_counter
         self.counting_store = counting_store
         self.name_provider = name_provider   # gecis aninda yuz -> isim (opsiyonel)
+        self.report_manager = report_manager
         self._workers = {}          # name -> _PreviewWorker
         self._lock = threading.Lock()
         # None = config varsayilani; True/False = tum kameralar icin zorlanmiss
@@ -156,7 +159,8 @@ class LiveManager:
             pw = _PreviewWorker(cam, self.config, db=self.db,
                                 on_capture=self.on_capture,
                                 line_counter=lc, counting_store=cs,
-                                name_provider=npv).start()
+                                name_provider=npv,
+                                report_manager=self.report_manager).start()
             if self._zoom_override is not None:
                 pw.worker.set_zoom(self._zoom_override)   # global zoom durumunu uygula
             self._workers[name] = pw

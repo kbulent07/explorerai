@@ -24,6 +24,7 @@ import yaml
 from camera import build_cameras
 from db import Database
 from worker import CameraWorker
+from reporting import build_report_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,6 +63,8 @@ def main():
         images_dir=config.get("images_dir", "captures"),
     )
 
+    report_manager = build_report_manager(config)
+
     cameras = build_cameras(config)
     if not cameras:
         log.error("Yapilandirmada kamera yok. config.yaml'i kontrol edin.")
@@ -69,7 +72,8 @@ def main():
     for cam in cameras:
         cam.start()
 
-    workers = [CameraWorker(cam, config, db) for cam in cameras]
+    workers = [CameraWorker(cam, config, db, report_manager=report_manager)
+               for cam in cameras]
 
     show = config.get("show_windows", True)
     if show:
@@ -134,6 +138,8 @@ def main():
             cam.stop()
         if show:
             cv.destroyAllWindows()
+        if report_manager is not None:
+            report_manager.stop()    # bekleyen raporlar diske (kayip olmasin)
         db.close()
         log.info("Kapandi.")
 

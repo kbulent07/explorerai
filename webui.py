@@ -129,6 +129,16 @@ if CONFIG.get("counting_enabled", False):
         log.warning("counting_enabled=true ama counting_camera/counting_line "
                     "eksik/gecersiz -> sayim KAPALI")
 
+# --- REST raporlama/alarm (opsiyonel; reporting.enabled ile acilir) ---
+from reporting import build_report_manager
+
+REPORTER = build_report_manager(CONFIG)
+if REPORTER is not None:
+    import atexit
+    atexit.register(REPORTER.stop)   # kapaniss: bekleyen raporlar diske
+    log.info("REST raporlama AKTIF: %s",
+             (CONFIG.get("reporting") or {}).get("gateway_base"))
+
 def _name_provider(face_crop_bgr, camera=None, ts=None):
     """Gecis aninda cagrilir: yuz kirpintisini embed edip kimlik adini dondurur.
     Once RECENT'te ISIMLI kimlikle esler; eslesme yoksa kimligi RECENT'e EKLER
@@ -160,7 +170,8 @@ def _name_provider(face_crop_bgr, camera=None, ts=None):
 # db=None -> DISKE/DB'ye yakalama YOK; en-net kareler yalniz bellekte (RECENT).
 LIVE = LiveManager(CONFIG, db=None, on_capture=_on_capture,
                    counting_camera=_COUNT_CAM, line_counter=_LINE_COUNTER,
-                   counting_store=COUNTING, name_provider=_name_provider)
+                   counting_store=COUNTING, name_provider=_name_provider,
+                   report_manager=REPORTER)
 
 
 app = Flask(__name__)

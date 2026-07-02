@@ -40,6 +40,24 @@ cpu_profile: normal          # normal | low | high
 #   - modules.zoom:ZoomModule
 #   - modules.overlay:OverlayModule
 
+# ---- raporlama / alarm (REST) ----
+# Opsiyonel. enabled=false ya da bolum tanimsizsa SIFIR etki (thread acilmaz).
+# Olaylar (sayim gecisi, biten gorunum) arka planda POST {gateway_base}/AiInput
+# adresine gonderilir (header X-API-KEY). Ag koptugunda kuyruk report_queue.json'a
+# yazilir, geri gelince gonderilir. api_key 'enc$...' olarak sifreli tutulabilir
+# (secrets_util; AIEYE_SECRET_KEY anahtariyla cozulur).
+reporting:
+  enabled: false
+  gateway_base: ""            # or. "https://ornek-gateway.example.com"
+  api_key: ""                 # enc$... (onerilen) veya duz metin
+  branch_id: ""
+  cooldown_seconds: 60        # (kamera, olay-tipi) basina en az bu aralikla
+  once_per_day: false
+  events: ["counting_crossing", "capture_finished"]
+  queue_path: "report_queue.json"
+  max_queue: 500
+# Kamera-bazli override (kamera blogunda): reporting: { branch_id: "SUBE-2" }
+
 # ---- algilama / takip ----
 face_model: "models/blaze_face_full_range.tflite"  # full_range: uzak/egik yuzler icin
                                                     # (short_range: models/blaze_face_short_range.tflite)
