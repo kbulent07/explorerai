@@ -23,6 +23,10 @@ snapshots/
 aieye.db
 aieye.db-journal
 aieye.db-wal
+# Eski isim (rebrand oncesi kalinti dosyalar; yanlislikla tekrar eklenmesin)
+facezoom.db
+facezoom.db-journal
+facezoom.db-wal
 
 # --- Arac / IDE ---
 .claude/
