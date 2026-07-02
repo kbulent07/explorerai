@@ -28,6 +28,18 @@ cpu_profile: normal          # normal | low | high
                              # detect_on_hires/detect_downscale/preview_fps/detect_interval/
                              # output_size/zoom_enabled degerleri gecersiz kalir.
 
+# ---- islem hatti (pipeline) ----
+# Opsiyonel. TANIMSIZSA bugunku davranis uretilir (recognition + [sayim kamerasinda
+# counting] + [zoom_enabled ise zoom] + [debug_overlay ise overlay]).
+# Tanimlarsan analiz/cikti asamalarinin SIRASINI ve KUMESINI sen belirlersin;
+# "yeni ozellik = yeni modul dosyasi (modules/ altinda) + buraya bir satir".
+# Cizim sirasi = liste sirasi (zoom once, overlay sonra).
+# pipeline:
+#   - modules.recognition:RecognitionModule
+#   - modules.counting:CountingModule
+#   - modules.zoom:ZoomModule
+#   - modules.overlay:OverlayModule
+
 # ---- algilama / takip ----
 face_model: "models/blaze_face_full_range.tflite"  # full_range: uzak/egik yuzler icin
                                                     # (short_range: models/blaze_face_short_range.tflite)
