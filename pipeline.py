@@ -112,6 +112,10 @@ def _default_chain(config, is_counting):
         chain.append("modules.zoom:ZoomModule")
     if config.get("debug_overlay", True):
         chain.append("modules.overlay:OverlayModule")
+    # Raporlama acik ise zincirin SONUNA ekle: process fazi liste sirasiyla
+    # calisir -> uretici moduller (recognition/counting) event'leri once yazar.
+    if (config.get("reporting") or {}).get("enabled", False):
+        chain.append("modules.reporting:ReportingModule")
     return chain
 
 

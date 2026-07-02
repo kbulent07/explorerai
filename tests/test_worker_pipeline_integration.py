@@ -38,3 +38,24 @@ def test_set_zoom_zoommodule_varken_calisir():
     w.set_zoom(False)   # ZoomModule'e delege; patlamamali
     zoom = [m for m in w._pipeline.modules if type(m).__name__ == "ZoomModule"]
     assert zoom and zoom[0].enabled is False
+
+
+def test_report_manager_service_ve_modul(monkeypatch):
+    class _Cam:
+        name = "Kam"
+        connected = True
+        def read_detect(self):
+            return None, 0
+        def read_hires(self):
+            return np.zeros((120, 160, 3), np.uint8), 1
+
+    class _RM:
+        def send(self, ev):
+            return True
+
+    cfg = {"detector_backend": "mediapipe", "zoom_enabled": False,
+           "debug_overlay": False, "output_size": [160, 120],
+           "detect_interval": 1, "reporting": {"enabled": True}}
+    w = W.CameraWorker(_Cam(), cfg, report_manager=_RM())
+    names = [type(m).__name__ for m in w._pipeline.modules]
+    assert "ReportingModule" in names

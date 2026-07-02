@@ -102,7 +102,8 @@ class CameraWorker:
     """
 
     def __init__(self, camera, config, db=None, on_capture=None,
-                 line_counter=None, counting_store=None, name_provider=None):
+                 line_counter=None, counting_store=None, name_provider=None,
+                 report_manager=None):
         # db=None       -> yakalama DB'ye/diske yazilmaz
         # on_capture(...)-> her bitmiss gorunumde cagrilir (bellek deposu vb. icin)
         #   imza: on_capture(camera_name, crop_bgr, bbox, quality, first, last, best_t)
@@ -117,6 +118,8 @@ class CameraWorker:
         # name_provider(face_crop_bgr) -> isim | None. Gecis aninda track'in yuzunu
         # kimlige baglamak icin (webui: ArcFace + RECENT). Worker tanimaya bagli degil.
         self.name_provider = name_provider
+        # REST rapor/alarm kuyrugu (uygulama basina TEK ornek; None = kapali)
+        self.report_manager = report_manager
 
         self.tracker = FaceTracker(
             min_detection_confidence=config.get("detection_confidence", 0.6),
@@ -199,6 +202,7 @@ class CameraWorker:
             "counting_store": self.counting_store,
             "name_resolver": self._name_resolver,
             "manager": self.manager,
+            "report_manager": self.report_manager,
         }
         cam_pipe = config.get("pipeline") if isinstance(config.get("pipeline"),
                                                         (list, tuple)) else None

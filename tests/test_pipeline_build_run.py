@@ -57,3 +57,18 @@ def test_build_kamera_override_onceligi():
     p = pipeline.build_pipeline(cfg, "Kam", {},
                                 camera_pipeline=["tests.helpers_pipe:GoodModule"])
     assert [type(m).__name__ for m in p.modules] == ["GoodModule"]
+
+
+def test_build_reporting_enabled_zincire_eklenir():
+    cfg = {"zoom_enabled": False, "debug_overlay": False,
+           "reporting": {"enabled": True}}
+    p = pipeline.build_pipeline(cfg, "Kam", {}, is_counting=False)
+    names = [type(m).__name__ for m in p.modules]
+    assert names == ["RecognitionModule", "ReportingModule"]
+
+
+def test_build_reporting_kapali_zincire_girmez():
+    cfg = {"zoom_enabled": False, "debug_overlay": False}
+    p = pipeline.build_pipeline(cfg, "Kam", {}, is_counting=False)
+    names = [type(m).__name__ for m in p.modules]
+    assert "ReportingModule" not in names
