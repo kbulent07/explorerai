@@ -23,6 +23,9 @@ snapshots/
 aieye.db
 aieye.db-journal
 aieye.db-wal
+report_queue.json
+report_queue.json.tmp
+report_queue.json.bad
 # Eski isim (rebrand oncesi kalinti dosyalar; yanlislikla tekrar eklenmesin)
 facezoom.db
 facezoom.db-journal

@@ -45,11 +45,15 @@ class ReportManager:
         self.queue_path = reporting_cfg.get("queue_path") or "report_queue.json"
         self._queue = collections.deque(maxlen=int(reporting_cfg.get("max_queue", 500)))
         self._lock = threading.Lock()
+        # _last_sent kilitsiz: anahtar (camera, type) kamera-thread'ine ozgu oldugundan
+        # es-zamanli yazim ayni anahtara gelmez (GIL tekil dict islemini atomik yapar).
+        # Paylasilan-anahtar cagiran eklenirse kilit altina alinmali.
         # (camera, type) -> son gonderim epoch'u | "YYYY-MM-DD" (once_per_day)
         self._last_sent = {}
         self._stop_ev = threading.Event()
         self._thread = None
         self._drop_count = 0
+        self._dirty = False  # kuyruk son snapshot'tan beri degisti mi
         self._load_snapshot()
 
     # ---- rate limit ----
@@ -83,6 +87,7 @@ class ReportManager:
                     log.warning("Rapor kuyrugu dolu (%d): en eski dusuyor (#%d)",
                                 self._queue.maxlen, self._drop_count)
             self._queue.append(payload)
+            self._dirty = True
         self._last_sent[key] = self._day(now) if self.once_per_day else now
         return True
 
@@ -118,8 +123,14 @@ class ReportManager:
                 with self._lock:
                     if self._queue and self._queue[0] is item:
                         self._queue.popleft()
+                        self._dirty = True
+                    now_empty = not self._queue
+                if now_empty:
+                    self._remove_snapshot()  # hepsi gitti -> bayat kopya kalmasin
             else:
-                self._snapshot()             # cevrimdisi: birikeni diske yaz
+                if self._dirty:
+                    self._snapshot()         # cevrimdisi: birikeni diske yaz
+                    self._dirty = False
                 self._stop_ev.wait(RETRY_DELAY)
 
     def _post(self, payload):
@@ -141,10 +152,19 @@ class ReportManager:
         try:
             with self._lock:
                 items = list(self._queue)
-            with open(self.queue_path, "w", encoding="utf-8") as f:
+            tmp_path = self.queue_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(items, f)
+            os.replace(tmp_path, self.queue_path)  # atomik: yari-yazik dosya kalmaz
         except OSError:
             log.warning("Rapor kuyrugu diske yazilamadi: %s", self.queue_path)
+
+    def _remove_snapshot(self):
+        # gonderilmis kuyrugun bayat kopyasi diske kalmasin (mukerrer gonderim onlenir)
+        try:
+            os.remove(self.queue_path)
+        except OSError:
+            pass
 
     def _load_snapshot(self):
         if not os.path.exists(self.queue_path):
@@ -157,6 +177,11 @@ class ReportManager:
             log.info("Bekleyen %d rapor diskten yuklendi", len(items))
         except (OSError, ValueError):
             log.warning("Rapor kuyrugu dosyasi okunamadi: %s", self.queue_path)
+            # bozuk dosyayi kenara al: her aclista ayni uyari donmesin
+            try:
+                os.replace(self.queue_path, self.queue_path + ".bad")
+            except OSError:
+                pass
 
     def stop(self):
         """Kapanis: thread'i durdur, bekleyen raporlari diske yaz (kayip olmasin)."""
@@ -167,6 +192,8 @@ class ReportManager:
             has_items = bool(self._queue)
         if has_items:
             self._snapshot()
+        else:
+            self._remove_snapshot()
 
 
 def build_report_manager(config):

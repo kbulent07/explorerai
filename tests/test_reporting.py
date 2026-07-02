@@ -153,3 +153,36 @@ def test_stop_bekleyenleri_diske_yazar(tmp_path):
     rm.send({"type": "t", "camera": "K", "ts": 1.0})
     rm.stop()                 # thread baslamadi ama kuyruk dolu -> snapshot
     assert (tmp_path / "q.json").exists()
+
+
+def test_basarili_drenaj_snapshot_dosyasini_siler(tmp_path, monkeypatch):
+    # kesinti -> snapshot olusur; ag gelir, kuyruk bosalir -> dosya SILINMELI
+    monkeypatch.setattr(reporting.urllib.request, "urlopen",
+                        lambda req, timeout=None: _Resp())
+    rm = _rm(tmp_path, cooldown_seconds=0)
+    rm.send({"type": "t", "camera": "K", "ts": 1.0})
+    rm._snapshot()                       # kesinti anini taklit et
+    qp = tmp_path / "q.json"
+    assert qp.exists()
+    rm.start()
+    deadline = time.time() + 3.0
+    while rm._queue and time.time() < deadline:
+        time.sleep(0.05)
+    rm.stop()
+    assert not rm._queue
+    assert not qp.exists()               # bayat kopya kalmadi
+
+
+def test_stop_bos_kuyrukta_bayat_dosyayi_siler(tmp_path):
+    rm = _rm(tmp_path)
+    (tmp_path / "q.json").write_text("[]", encoding="utf-8")
+    rm.stop()
+    assert not (tmp_path / "q.json").exists()
+
+
+def test_bozuk_snapshot_kenara_alinir(tmp_path):
+    (tmp_path / "q.json").write_text("BOZUK{{{", encoding="utf-8")
+    rm = _rm(tmp_path)                   # acilista yukleme denenir
+    assert not rm._queue                 # kuyruk bos kaldi, patlamadi
+    assert not (tmp_path / "q.json").exists()
+    assert (tmp_path / "q.json.bad").exists()
